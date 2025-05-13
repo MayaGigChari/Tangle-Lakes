@@ -1,0 +1,1363 @@
+---
+title: "2023_DCR_MR_Grayling"
+output: 
+  html_document:
+    toc: true
+    toc_depth: 2
+    toc_float:
+      collapsed: TRUE
+date: "2024-2-12"
+---
+
+```{r, include= FALSE}
+knitr::opts_chunk$set(message = FALSE,warning = FALSE,echo = FALSE,cache = TRUE)
+```
+
+```{r import packages, message=FALSE,include=FALSE}
+library(tidyverse)
+library(readxl)
+library(kableExtra)
+```
+
+```{r import data and modify, message=FALSE,include=FALSE}
+data <- read_excel("./Data/DCR grayling 2023 master data.xlsx")
+
+data <- data %>%
+  mutate(area = case_when(
+    Map_section %in% 1:5 ~ "A",
+    Map_section %in% 6:10 ~ "B",
+    Map_section %in% 11:14 ~ "C",
+    Map_section %in% 15:18 ~ "D",
+    Map_section %in% 19:22 ~ "E",
+    TRUE ~ NA_character_  # If none of the conditions are met, return NA
+  ))
+
+# Assign a Y to recaps for the first event so its easier to calculate m2 later
+data <- data %>%
+  group_by(Tag) %>%
+  mutate(RecapE1 = ifelse(n() == 2 & Event == 1, "y", NA)) %>%
+  ungroup()
+
+```
+
+# Tables and Plots {.tabset}
+
+## Area and Size Designations
+```{r modify data,}
+
+
+summary_table <- data %>%
+  group_by(area) %>%
+  summarise(
+    Section_Start = min(Map_section),
+    Section_End = max(Map_section),
+    R = sum(!is.na(Recap_Y_N)), 
+    M = sum(Event ==1), 
+    C = sum(Event == 2),
+    n.sections = Section_End - Section_Start +1
+    
+  )
+
+# Print the summary table
+kable(summary_table,format = "html", caption="New Area Designations")%>%kable_styling(bootstrap_options = "condensed",full_width = F)
+
+```
+```{r estimated TL}
+filtered_data <- na.omit(data[c("FL_mm", "TL_mm")])
+filtered_data <- data[data$FL_mm != 0 & data$TL_mm != 0, ]
+lm_result_FL_TL <- lm(TL_mm ~ FL_mm,data = filtered_data)
+lm_result_TL_FL <- lm(FL_mm ~ TL_mm, data = filtered_data)
+
+
+data <- data %>%
+  mutate(est_TL = ifelse(TL_mm != 0, TL_mm, 8.44145 + FL_mm * 1.049838))
+
+# Create size classes and corresponding inch ranges
+size_classes <- c("12\" and greater", "13\" and greater", "14\" and greater", "15\" and greater", "16\" and greater",
+                  "17\" and greater", "18\" and greater", "19\" and greater", "20\" and greater")
+inch_ranges <- c(12, 13, 14, 15, 16,17,18,19,20)
+
+# Convert inches to millimeters for each range
+mm_conversion <- inch_ranges * 25.4  # 1 inch = 25.4 mm
+
+# Create a data frame with Size Class and Inches to mm conversion
+size_table <- data.frame(Size_Class = size_classes, Inches = inch_ranges, MM_Conversion = round(mm_conversion,0),
+                         FL_equivalent = round(-2.4714702 + 0.9386582*(mm_conversion),0))
+
+# Display the table
+kable(size_table,format = "html", caption="Size Designation using FL~TL regression")%>%
+  kable_styling(bootstrap_options = "condensed",full_width = F)
+```
+
+## Crew Fish Counts Table
+```{r crew success tables}
+
+catches = data %>%
+  separate_rows(Crew, sep = ", ") %>%
+  group_by(Crew) %>%
+  summarise(Total = n(),
+            Event1 = sum(Event == 1),
+            Event2 = sum(Event == 2),
+            N.recaps = sum(Recap_Y_N == "y", na.rm = TRUE),
+            Days_Fished = n_distinct(Date))%>%
+  mutate(AvgDay = Total / Days_Fished,
+         Recap_rate = N.recaps / Event2)%>%arrange(desc(Total))
+kable(catches, format = "html")%>%kable_styling(full_width = FALSE)
+```
+
+
+
+## Movement of Recaps 
+```{r recap movement,}
+movement <- data %>%
+  group_by(Tag)%>%
+  filter(n() == 2)%>%
+  reframe(
+    FL = first(FL_mm),
+    area_marked = first(Map_section[Event == 1]),
+    area_recaptured = first(Map_section[Event == 2]),
+    movement = area_recaptured - area_marked)
+
+
+
+# Creating a data frame for ggplot
+data_df <- data.frame(value = movement$movement)
+mean_val = mean(movement$movement)
+# Create a histogram with individual labels on the X-axis
+ggplot(data_df, aes(x = value)) +
+  geom_histogram(binwidth = 1,fill = "skyblue", color = "black")+
+  scale_x_continuous(breaks=seq(-2,20,1))+geom_vline(xintercept = mean_val, color = "red", linetype = "dashed") +
+  annotate("text", x = mean_val, y = 5, label = paste("Mean:", round(mean_val, 2)), vjust = -1, color = "red")+
+  labs(title = "Movement of Recaptures", x = "Recap Section - Initial Mark Section")
+```
+  
+## Length Distributions Overall
+
+```{r length distributions,}
+
+# Plot distribution of FL_mm
+
+
+ggplot(data, aes(x = FL_mm)) +
+  geom_histogram(aes(y=after_stat(density)),binwidth = 5, fill = "skyblue", color = "black", alpha = 0.7) +
+  geom_density(color = "red", size = .5)+
+  labs(title = "Distribution of Fork Lengths") +
+  xlab("Measured FL (mm)") + ylab("") +
+  geom_text(data = size_table, aes(x = FL_equivalent, label = Inches, y =0),
+            vjust = -0.5, hjust = -0.5, color = "red", size = 3)+
+  geom_vline(data = size_table, aes(xintercept = FL_equivalent),
+             color = "red", linetype = "dashed",alpha = 0.2)+
+  scale_x_continuous(breaks = seq(250,500,25))
+
+
+
+
+# Plot distribution of FL_mm
+ggplot(data, aes(x = FL_mm)) +
+  geom_histogram(aes(y=after_stat(density)),binwidth = 5, fill = "skyblue", color = "black", alpha = 0.7) +
+  geom_density(color = "red", size = .5)+
+  labs(title = "Distribution of Fork Lengths") +
+  xlab("Estimated Inches based on FL~TL regression") + ylab("") +
+  
+  # Add labels on the X-axis at FL_equivalent points
+  scale_x_continuous(breaks = size_table$FL_equivalent, labels = size_table$Inches) 
+```
+
+## Length Distribution By Area
+```{r length distribution by Area,fig.height=14}
+grand_mean <- data %>% summarise(mean_FL_mm = mean(FL_mm, na.rm = TRUE))
+
+# Calculate means for each area
+area_means <- data %>%
+  group_by(area) %>%
+  summarise(mean_FL_mm = mean(FL_mm, na.rm = TRUE))
+
+ggplot(data, aes(x = FL_mm)) +
+  geom_histogram(aes(y = after_stat(density)), binwidth = 5, fill = "skyblue", color = "black", alpha = 0.7) +
+  geom_density(color = "red", size = 0.5) +
+  labs(title = "Distribution of Fork Lengths by Area") +
+  xlab("Measured FL (mm)") + ylab("") +
+  geom_vline(data = grand_mean, aes(xintercept = mean_FL_mm),
+             color = "black", size = 1) +
+    geom_text(data = grand_mean, aes(x = mean_FL_mm, label = "Overall mean = 369mm", y = .015),
+            color = "red", size = 3)+
+  geom_vline(data = area_means, aes(xintercept = mean_FL_mm),
+             color = "blue", size = 1, linetype = "dashed") +
+  geom_text(data = area_means, aes(x = mean_FL_mm, label = round(mean_FL_mm), y = .011),
+            color = "blue", size = 3)+
+  scale_x_continuous(breaks = seq(250, 500, 25)) +
+  facet_wrap(~area, ncol = 1)
+```
+
+## Length by Map_Section 
+```{r mean length by section,}
+mean_data <- data %>%
+    group_by(Map_section) %>%
+    summarise(mean_FL_mm = mean(FL_mm, na.rm = TRUE),
+              sd_FL_mm = sd(FL_mm, na.rm = TRUE),
+              se_FL_mm = sd_FL_mm / sqrt(n()))  # Standard error
+
+# Create the ggplot
+ggplot(mean_data, aes(x = factor(Map_section), y = mean_FL_mm)) +
+    geom_point(fill = "skyblue", color = "black") +  # Use geom_col for bar plot
+    geom_line(group = 1)+
+    geom_errorbar(aes(ymin = mean_FL_mm - se_FL_mm, ymax = mean_FL_mm + se_FL_mm),
+                  width = 0.2,  # Adjust width of error bars as needed
+                  position = position_dodge(width = 0.9)) +  # Adjust position if necessary
+    labs(title = "Mean FL by Map Section",
+         x = "Map Section",
+         y = "Mean FL (mm)") +
+    theme_minimal()
+
+ggplot() +
+  geom_boxplot(data = data, aes(x = factor(Map_section), y = FL_mm), fill = "skyblue", color = "black") +
+  geom_smooth(data = data, aes(x = factor(Map_section), y = FL_mm, group = 1), method = "lm", se = TRUE, color = "red", size = 1) +
+  labs(title = "Boxplot of FL_mm by Map Section with Trendline",
+       x = "Map Section",
+       y = "FL_mm") +
+  theme_minimal()
+```
+
+# {-}
+
+<hr style="border:1px solid gray"> 
+
+# Abundance Estimates For Each Size Class {.tabset .tabset-fade .tabset-pills}
+## **All data (Forklength $\ge$ 270mm)**
+
+
+```{r subset all data, message=FALSE,include=FALSE}
+
+M <- data %>% filter(Event == 1) %>% pull(FL_mm)
+C <- data %>% filter(Event == 2) %>% pull(FL_mm)
+R <- data %>% filter(Recap_Y_N == "y") %>% pull(FL_mm)
+
+```
+
+### KS-Tests
+
+```{r ECDF plot}
+combined_data <- data.frame(
+  FL_mm = c(M, C, R),
+  Category = rep(c("M", "C", "R"), times = c(length(M), length(C), length(R)))
+)
+
+# Create a cumulative distribution plot
+ggplot(combined_data, aes(x = FL_mm, color = Category)) +
+  stat_ecdf(geom = "step") +
+  labs(x = "Length (mm)", y = "Cumulative Proportion",title = "ECDF (ALL fish)") +
+  scale_x_continuous(breaks = seq(250, 500, by = 25))+
+  theme_minimal()
+```
+
+```{r KS.tests, include=FALSE,message=FALSE}
+# Define a function to create plots and perform KS Test
+plot_and_ks_test <- function(data1, data2, label1, label2) {
+  # Create ECDF plots
+  p <- ggplot() +
+    stat_ecdf(data = data1, aes(x = FL_mm, color = label1), geom = "step", size = 1) +
+    stat_ecdf(data = data2, aes(x = FL_mm, color = label2), geom = "step", size = 1) +
+    labs(x = "Length (mm)", y = "Cumulative Proportion", title = paste("ECDF -", label1, "vs", label2)) +
+    theme_minimal()
+
+  # Perform KS Test
+  ks_test_result <- ks.test(data1$FL_mm, data2$FL_mm)
+
+  # Extract KS Test D statistic and p-value
+  ks_statistic <- ks_test_result$statistic
+  ks_p_value <- ks_test_result$p.value
+
+  # Add KS Test result to plot
+  p + annotate(
+    "text", x = Inf, y = Inf, hjust = 1, vjust = 1,
+    label = paste("KS Test: D =", round(ks_statistic, 3), "P =", format.pval(ks_p_value, digits = 3))
+  ) + 
+  scale_color_discrete(name = "Legend", labels = c(label1, label2))
+}
+
+# Create plots and perform KS Test for M vs R, M vs C, R vs C
+plot1 <- plot_and_ks_test(data.frame(FL_mm = M), data.frame(FL_mm = R), "M", "R")
+plot2 <- plot_and_ks_test(data.frame(FL_mm = M), data.frame(FL_mm = C), "M", "C")
+plot3 <- plot_and_ks_test(data.frame(FL_mm = R), data.frame(FL_mm = C), "R", "C")
+
+# Display the plots
+print(plot1)
+print(plot2)
+print(plot3)
+```
+
+```{r KS-test table,}
+# Perform KS Test for M vs R, C vs R, M vs C
+ks_test_M_R <- ks.test(M, R)
+ks_test_C_R <- ks.test(C, R)
+ks_test_M_C <- ks.test(M, C)
+
+# Extract KS Test results
+results_table <- data.frame(
+  "M_vs_R" = c(round(ks_test_M_R$statistic,3), round(ks_test_M_R$p.value,3), ifelse(ks_test_M_R$p.value < 0.05, "Reject H0", "Fail to Reject H0")),
+  "C_vs_R" = c(round(ks_test_C_R$statistic,3), round(ks_test_C_R$p.value,3), ifelse(ks_test_C_R$p.value < 0.05, "Reject H0", "Fail to Reject H0")),
+  "M_vs_C" = c(round(ks_test_M_C$statistic,3), round(ks_test_M_C$p.value,3), ifelse(ks_test_M_C$p.value < 0.05, "Reject H0", "Fail to Reject H0"))
+)
+
+# Add row names
+rownames(results_table) <- c("D statistic", "p-value", "Decision")
+
+# Print the results table
+kable(results_table,format = "html", caption="KS-tests for size selective sampling")%>%kable_styling(bootstrap_options = "condensed",full_width = F)
+```
+
+<hr style="border:1px solid gray">
+
+### CHI SQ TESTS
+
+#### Test for Complete Mixing
+
+```{r complete mixing test}
+TagMix <- data %>%
+  group_by(Tag)%>%
+  filter(n() == 2)%>%
+  reframe(
+    area_marked = first(area[Event == 1]),
+    area_recaptured = first(area[Event == 2]))%>%
+  count(area_marked, area_recaptured) %>%
+  spread(area_recaptured, value = n, fill = 0) %>%
+  column_to_rownames(var = "area_marked")
+
+counts <- data %>% group_by(area) %>% 
+  summarize(n1 = sum(Event == 1 ),
+            m2 = sum(RecapE1 == "y",na.rm = TRUE))
+  
+Mixtable = cbind(TagMix, n1_m2 = counts$n1 - counts$m2)
+
+kable(Mixtable,format = "html",caption = "Test for complete mixing")%>%kable_styling(full_width = FALSE)%>%
+  add_header_above(header = c(" " = 1, "Area Recaptured" = 5," " =1))
+print(chisq.test(Mixtable))
+print(ifelse(chisq.test(Mixtable)$p.value < 0.05, "Reject H0", "Fail to Reject H0"))
+```
+
+#### Test for equal probability of capture during Event 1 (H0 = Every fish has an equal probability of being captured and marked during event 1)
+
+```{r test for equal prob of capture during E1}
+ProbE1 <- data %>% filter(Duplicates != -1)%>%
+  group_by(area) %>% 
+  summarize(m2 = sum(Recap_Y_N == "y",na.rm = TRUE),
+            n2_m2 = sum(Event == 2) - m2)%>%
+  gather(key = "variable", value = "value", -area) %>%
+  spread(key = "area", value = "value")%>%
+  column_to_rownames(var = "variable")
+
+kable(ProbE1,format = "html",caption = "Test for equal probability of caputre during Event 1")%>%kable_styling(full_width = FALSE)
+print(chisq.test(ProbE1))
+print(ifelse(chisq.test(ProbE1)$p.value < 0.05, "Reject H0", "Fail to Reject H0"))
+```
+
+#### Test for equal probability of capture during Event 2 (H0 = Every fish has an equal probability of being captured and marked during event 2)
+
+```{r test for equal prob of capture during E2}
+ProbE2 <- data %>% filter(Duplicates != -1)%>%
+  group_by(area) %>% 
+  summarize(m2 = sum(RecapE1 == "y",na.rm = TRUE),
+            n1_m2 = sum(Event == 1) - m2)%>%
+  gather(key = "variable", value = "value", -area) %>%
+  spread(key = "area", value = "value")%>%
+  column_to_rownames(var = "variable")
+
+kable(ProbE2,format = "html",caption = "Test for equal probability of caputre during Event 2")%>%kable_styling(full_width = FALSE)
+print(chisq.test(ProbE2))
+print(ifelse(chisq.test(ProbE2)$p.value < 0.05, "Reject H0", "Fail to Reject H0"))
+```
+
+<hr style="border:1px solid gray"> 
+
+### Abundance Estimate (All fish)
+
+Bailey modification: $\hat{N} = \frac{M (C +1)}{(R +1)}$ and $Var(\hat{N}) = \frac{M^2(C+1)(C-R)}{(R+1)^2(R+2)}$
+
+```{r Abundance Est (all)}
+n1 <- length(M)
+n2 <- length(C)
+m2 <- length(R)
+
+Nhat_all <- (n1*(n2+1)) / (m2 +1)
+VarNhat_all <- ((n1^2)*(n2+1)*(n2-m2)) / (((m2 +1)^2)*(m2+2))
+lower_bound <- Nhat_all - 1.96 * sqrt(VarNhat_all)
+upper_bound <- Nhat_all + 1.96 * sqrt(VarNhat_all)
+
+# Create a data frame
+estimates <- data.frame(
+  "Abundance Estimate" = Nhat_all,
+  "Variance" = VarNhat_all,
+  "Lower95_CI" = lower_bound,
+  "upper95_CI" = upper_bound
+)
+
+# Print as a nice table
+kable(estimates, format = "html")%>%kable_styling(full_width = FALSE)
+```
+
+<hr style="border:2px solid black">
+
+## **12+ (ForkLength $\ge$ 283.6315 FL)**
+
+```{r subset 12+, message=FALSE,include=FALSE}
+data12 <- data %>% filter(FL_mm >= size_table$FL_equivalent[size_table$Inches ==12])
+M <- data12 %>% filter(Event == 1) %>% pull(FL_mm)
+C <- data12 %>% filter(Event == 2) %>% pull(FL_mm)
+R <- data12 %>% filter(Recap_Y_N == "y") %>% pull(FL_mm)
+
+```
+
+### KS-Tests
+
+```{r ECDF plot 12+}
+combined_data <- data.frame(
+  FL_mm = c(M, C, R),
+  Category = rep(c("M", "C", "R"), times = c(length(M), length(C), length(R)))
+)
+
+# Create a cumulative distribution plot
+ggplot(combined_data, aes(x = FL_mm, color = Category)) +
+  stat_ecdf(geom = "step") +
+  labs(x = "Length (mm)", y = "Cumulative Proportion",title = "ECDF (12+)") +
+  scale_x_continuous(breaks = seq(250, 500, by = 25))+
+  theme_minimal()
+```
+
+```{r KS-test table 12+,}
+# Perform KS Test for M vs R, C vs R, M vs C
+ks_test_M_R <- ks.test(M, R)
+ks_test_C_R <- ks.test(C, R)
+ks_test_M_C <- ks.test(M, C)
+
+# Extract KS Test results
+results_table <- data.frame(
+  "M_vs_R" = c(round(ks_test_M_R$statistic,3), round(ks_test_M_R$p.value,3), ifelse(ks_test_M_R$p.value < 0.05, "Reject H0", "Fail to Reject H0")),
+  "C_vs_R" = c(round(ks_test_C_R$statistic,3), round(ks_test_C_R$p.value,3), ifelse(ks_test_C_R$p.value < 0.05, "Reject H0", "Fail to Reject H0")),
+  "M_vs_C" = c(round(ks_test_M_C$statistic,3), round(ks_test_M_C$p.value,3), ifelse(ks_test_M_C$p.value < 0.05, "Reject H0", "Fail to Reject H0"))
+)
+
+# Add row names
+rownames(results_table) <- c("D statistic", "p-value", "Decision")
+
+# Print the results table
+kable(results_table,format = "html", caption="KS-tests for size selective sampling")%>%kable_styling(bootstrap_options = "condensed",full_width = F)
+```
+
+<hr style="border:1px solid gray">
+### CHI SQ TESTS
+
+#### Test for Complete Mixing
+
+```{r complete mixing test 12+}
+TagMix <- data12 %>%
+  group_by(Tag)%>%
+  filter(n() == 2)%>%
+  reframe(
+    area_marked = first(area[Event == 1]),
+    area_recaptured = first(area[Event == 2]))%>%
+  count(area_marked, area_recaptured) %>%
+  spread(area_recaptured, value = n, fill = 0) %>%
+  column_to_rownames(var = "area_marked")
+
+counts <- data12 %>% group_by(area) %>% 
+  summarize(n1 = sum(Event == 1 ),
+            m2 = sum(RecapE1 == "y",na.rm = TRUE))
+  
+Mixtable = cbind(TagMix, n1_m2 = counts$n1 - counts$m2)
+
+kable(Mixtable,format = "html",caption = "Test for complete mixing")%>%kable_styling(full_width = FALSE)%>%
+  add_header_above(header = c(" " = 1, "Area Recaptured" = 5," " =1))
+print(chisq.test(Mixtable))
+print(ifelse(chisq.test(Mixtable)$p.value < 0.05, "Reject H0", "Fail to Reject H0"))
+```
+
+#### Test for equal probability of capture during Event 1 (H0 = Every fish has an equal probability of being captured and marked during event 1)
+
+```{r test for equal prob of capture during E1 12+}
+ProbE1 <- data12 %>% filter(Duplicates != -1)%>%
+  group_by(area) %>% 
+  summarize(m2 = sum(Recap_Y_N == "y",na.rm = TRUE),
+            n2_m2 = sum(Event == 2) - m2)%>%
+  gather(key = "variable", value = "value", -area) %>%
+  spread(key = "area", value = "value")%>%
+  column_to_rownames(var = "variable")
+
+kable(ProbE1,format = "html",caption = "Test for equal probability of caputre during Event 1")%>%kable_styling(full_width = FALSE)
+print(chisq.test(ProbE1))
+print(ifelse(chisq.test(ProbE1)$p.value < 0.05, "Reject H0", "Fail to Reject H0"))
+```
+
+#### Test for equal probability of capture during Event 2 (H0 = Every fish has an equal probability of being captured and marked during event 2)
+
+```{r test for equal prob of capture during E2 12+}
+ProbE2 <- data12 %>% filter(Duplicates != -1)%>%
+  group_by(area) %>% 
+  summarize(m2 = sum(RecapE1 == "y",na.rm = TRUE),
+            n1_m2 = sum(Event == 1) - m2)%>%
+  gather(key = "variable", value = "value", -area) %>%
+  spread(key = "area", value = "value")%>%
+  column_to_rownames(var = "variable")
+
+kable(ProbE2,format = "html",caption = "Test for equal probability of caputre during Event 2")%>%kable_styling(full_width = FALSE)
+print(chisq.test(ProbE2))
+print(ifelse(chisq.test(ProbE2)$p.value < 0.05, "Reject H0", "Fail to Reject H0"))
+```
+
+<hr style="border:1px solid gray"> 
+
+### Abundance Estimate (12+)
+
+```{r Abundance Est 12+}
+n1 <- length(M)
+n2 <- length(C)
+m2 <- length(R)
+
+Nhat_12 <- (n1*(n2+1)) / (m2 +1)
+VarNhat_12 <- ((n1^2)*(n2+1)*(n2-m2)) / (((m2 +1)^2)*(m2+2))
+lower_bound <- Nhat_12 - 1.96 * sqrt(VarNhat_12)
+upper_bound <- Nhat_12 + 1.96 * sqrt(VarNhat_12)
+
+# Create a data frame
+
+estimates <- data.frame(
+  "Abundance Estimate" = Nhat_12,
+  "Variance" = VarNhat_12,
+  "Lower95_CI" = lower_bound,
+  "Upper95_CI" = upper_bound
+)
+
+# Print as a nice table
+kable(estimates, format = "html")%>%kable_styling(full_width = FALSE)
+```
+  
+<hr style="border:2px solid black">
+
+## **13+ (ForkLength $\ge$ 307.4735 FL)**
+
+```{r subset 13+, message=FALSE,include=FALSE}
+data13 <- data %>% filter(FL_mm >= size_table$FL_equivalent[size_table$Inches ==13])
+M <- data13 %>% filter(Event == 1) %>% pull(FL_mm)
+C <- data13 %>% filter(Event == 2) %>% pull(FL_mm)
+R <- data13 %>% filter(Recap_Y_N == "y") %>% pull(FL_mm)
+
+```
+
+### KS-Tests
+
+```{r ECDF plot 13+}
+combined_data <- data.frame(
+  FL_mm = c(M, C, R),
+  Category = rep(c("M", "C", "R"), times = c(length(M), length(C), length(R)))
+)
+
+# Create a cumulative distribution plot
+ggplot(combined_data, aes(x = FL_mm, color = Category)) +
+  stat_ecdf(geom = "step") +
+  labs(x = "Length (mm)", y = "Cumulative Proportion",title = "ECDF (13+)") +
+  scale_x_continuous(breaks = seq(250, 500, by = 25))+
+  theme_minimal()
+```
+
+
+```{r KS-test table 13+,}
+# Perform KS Test for M vs R, C vs R, M vs C
+ks_test_M_R <- ks.test(M, R)
+ks_test_C_R <- ks.test(C, R)
+ks_test_M_C <- ks.test(M, C)
+
+# Extract KS Test results
+results_table <- data.frame(
+  "M_vs_R" = c(round(ks_test_M_R$statistic,3), round(ks_test_M_R$p.value,3), ifelse(ks_test_M_R$p.value < 0.05, "Reject H0", "Fail to Reject H0")),
+  "C_vs_R" = c(round(ks_test_C_R$statistic,3), round(ks_test_C_R$p.value,3), ifelse(ks_test_C_R$p.value < 0.05, "Reject H0", "Fail to Reject H0")),
+  "M_vs_C" = c(round(ks_test_M_C$statistic,3), round(ks_test_M_C$p.value,3), ifelse(ks_test_M_C$p.value < 0.05, "Reject H0", "Fail to Reject H0"))
+)
+
+# Add row names
+rownames(results_table) <- c("D statistic", "p-value", "Decision")
+
+# Print the results table
+kable(results_table,format = "html", caption="KS-tests for size selective sampling")%>%kable_styling(bootstrap_options = "condensed",full_width = F)
+```
+
+<hr style="border:1px solid gray">
+### CHI SQ TESTS
+
+#### Test for Complete Mixing
+
+```{r complete mixing test 13+}
+TagMix <- data13 %>%
+  group_by(Tag)%>%
+  filter(n() == 2)%>%
+  reframe(
+    area_marked = first(area[Event == 1]),
+    area_recaptured = first(area[Event == 2]))%>%
+  count(area_marked, area_recaptured) %>%
+  spread(area_recaptured, value = n, fill = 0) %>%
+  column_to_rownames(var = "area_marked")
+
+counts <- data13 %>% group_by(area) %>% 
+  summarize(n1 = sum(Event == 1 ),
+            m2 = sum(RecapE1 == "y",na.rm = TRUE))
+  
+Mixtable = cbind(TagMix, n1_m2 = counts$n1 - counts$m2)
+
+kable(Mixtable,format = "html",caption = "Test for complete mixing")%>%kable_styling(full_width = FALSE)%>%
+  add_header_above(header = c(" " = 1, "Area Recaptured" = 5," " =1))
+print(chisq.test(Mixtable))
+print(ifelse(chisq.test(Mixtable)$p.value < 0.05, "Reject H0", "Fail to Reject H0"))
+```
+
+#### Test for equal probability of capture during Event 1 (H0 = Every fish has an equal probability of being captured and marked during event 1)
+
+```{r test for equal prob of capture during E1 13+}
+ProbE1 <- data13 %>% filter(Duplicates != -1)%>%
+  group_by(area) %>% 
+  summarize(m2 = sum(Recap_Y_N == "y",na.rm = TRUE),
+            n2_m2 = sum(Event == 2) - m2)%>%
+  gather(key = "variable", value = "value", -area) %>%
+  spread(key = "area", value = "value")%>%
+  column_to_rownames(var = "variable")
+
+kable(ProbE1,format = "html",caption = "Test for equal probability of caputre during Event 1")%>%kable_styling(full_width = FALSE)
+print(chisq.test(ProbE1))
+print(ifelse(chisq.test(ProbE1)$p.value < 0.05, "Reject H0", "Fail to Reject H0"))
+```
+
+#### Test for equal probability of capture during Event 2 (H0 = Every fish has an equal probability of being captured and marked during event 2)
+
+```{r test for equal prob of capture during E2 13+}
+ProbE2 <- data13 %>% filter(Duplicates != -1)%>%
+  group_by(area) %>% 
+  summarize(m2 = sum(RecapE1 == "y",na.rm = TRUE),
+            n1_m2 = sum(Event == 1) - m2)%>%
+  gather(key = "variable", value = "value", -area) %>%
+  spread(key = "area", value = "value")%>%
+  column_to_rownames(var = "variable")
+
+kable(ProbE2,format = "html",caption = "Test for equal probability of caputre during Event 2")%>%kable_styling(full_width = FALSE)
+print(chisq.test(ProbE2))
+print(ifelse(chisq.test(ProbE2)$p.value < 0.05, "Reject H0", "Fail to Reject H0"))
+```
+
+<hr style="border:1px solid gray"> 
+
+### Abundance Estimate (13+)
+
+```{r Abundance Est 13+}
+n1 <- length(M)
+n2 <- length(C)
+m2 <- length(R)
+
+Nhat_13 <- (n1*(n2+1)) / (m2 +1)
+VarNhat_13 <- ((n1^2)*(n2+1)*(n2-m2)) / (((m2 +1)^2)*(m2+2))
+lower_bound <- Nhat_13 - 1.96 * sqrt(VarNhat_13)
+upper_bound <- Nhat_13 + 1.96 * sqrt(VarNhat_13)
+
+# Create a data frame
+
+estimates <- data.frame(
+  "Abundance Estimate" = Nhat_13,
+  "Variance" = VarNhat_13,
+  "Lower95_CI" = lower_bound,
+  "Upper95_CI" = upper_bound
+)
+
+# Print as a nice table
+kable(estimates, format = "html")%>%kable_styling(full_width = FALSE)
+```
+
+<hr style="border:2px solid black">
+
+## **14+ (ForkLength $\ge$ 331.3154 FL)**
+
+```{r subset 14+, message=FALSE,include=FALSE}
+data14 <- data %>% filter(FL_mm >= size_table$FL_equivalent[size_table$Inches ==14])
+M <- data14 %>% filter(Event == 1) %>% pull(FL_mm)
+C <- data14 %>% filter(Event == 2) %>% pull(FL_mm)
+R <- data14 %>% filter(Recap_Y_N == "y") %>% pull(FL_mm)
+
+```
+
+### KS-Tests
+
+```{r ECDF plot 14+}
+combined_data <- data.frame(
+  FL_mm = c(M, C, R),
+  Category = rep(c("M", "C", "R"), times = c(length(M), length(C), length(R)))
+)
+
+# Create a cumulative distribution plot
+ggplot(combined_data, aes(x = FL_mm, color = Category)) +
+  stat_ecdf(geom = "step") +
+  labs(x = "Length (mm)", y = "Cumulative Proportion",title = "ECDF (14+)") +
+  scale_x_continuous(breaks = seq(250, 500, by = 25))+
+  theme_minimal()
+```
+
+
+```{r KS-test table 14+,}
+# Perform KS Test for M vs R, C vs R, M vs C
+ks_test_M_R <- ks.test(M, R)
+ks_test_C_R <- ks.test(C, R)
+ks_test_M_C <- ks.test(M, C)
+
+# Extract KS Test results
+results_table <- data.frame(
+  "M_vs_R" = c(round(ks_test_M_R$statistic,3), round(ks_test_M_R$p.value,3), ifelse(ks_test_M_R$p.value < 0.05, "Reject H0", "Fail to Reject H0")),
+  "C_vs_R" = c(round(ks_test_C_R$statistic,3), round(ks_test_C_R$p.value,3), ifelse(ks_test_C_R$p.value < 0.05, "Reject H0", "Fail to Reject H0")),
+  "M_vs_C" = c(round(ks_test_M_C$statistic,3), round(ks_test_M_C$p.value,3), ifelse(ks_test_M_C$p.value < 0.05, "Reject H0", "Fail to Reject H0"))
+)
+
+# Add row names
+rownames(results_table) <- c("D statistic", "p-value", "Decision")
+
+# Print the results table
+kable(results_table,format = "html", caption="KS-tests for size selective sampling")%>%kable_styling(bootstrap_options = "condensed",full_width = F)
+```
+
+<hr style="border:1px solid gray">
+### CHI SQ TESTS
+
+#### Test for Complete Mixing
+
+```{r complete mixing test 14+}
+TagMix <- data14 %>%
+  group_by(Tag)%>%
+  filter(n() == 2)%>%
+  reframe(
+    area_marked = first(area[Event == 1]),
+    area_recaptured = first(area[Event == 2]))%>%
+  count(area_marked, area_recaptured) %>%
+  spread(area_recaptured, value = n, fill = 0) %>%
+  column_to_rownames(var = "area_marked")
+
+counts <- data14 %>% group_by(area) %>% 
+  summarize(n1 = sum(Event == 1 ),
+            m2 = sum(RecapE1 == "y",na.rm = TRUE))
+  
+Mixtable = cbind(TagMix, n1_m2 = counts$n1 - counts$m2)
+
+kable(Mixtable,format = "html",caption = "Test for complete mixing")%>%kable_styling(full_width = FALSE)%>%
+  add_header_above(header = c(" " = 1, "Area Recaptured" = 5," " =1))
+print(chisq.test(Mixtable))
+print(ifelse(chisq.test(Mixtable)$p.value < 0.05, "Reject H0", "Fail to Reject H0"))
+```
+
+#### Test for equal probability of capture during Event 1 (H0 = Every fish has an equal probability of being captured and marked during event 1)
+
+```{r test for equal prob of capture during E1 14+}
+ProbE1 <- data14 %>% filter(Duplicates != -1)%>%
+  group_by(area) %>% 
+  summarize(m2 = sum(Recap_Y_N == "y",na.rm = TRUE),
+            n2_m2 = sum(Event == 2) - m2)%>%
+  gather(key = "variable", value = "value", -area) %>%
+  spread(key = "area", value = "value")%>%
+  column_to_rownames(var = "variable")
+
+kable(ProbE1,format = "html",caption = "Test for equal probability of caputre during Event 1")%>%kable_styling(full_width = FALSE)
+print(chisq.test(ProbE1))
+print(ifelse(chisq.test(ProbE1)$p.value < 0.05, "Reject H0", "Fail to Reject H0"))
+```
+
+#### Test for equal probability of capture during Event 2 (H0 = Every fish has an equal probability of being captured and marked during event 2)
+
+```{r test for equal prob of capture during E2 14+}
+ProbE2 <- data14 %>% filter(Duplicates != -1)%>%
+  group_by(area) %>% 
+  summarize(m2 = sum(RecapE1 == "y",na.rm = TRUE),
+            n1_m2 = sum(Event == 1) - m2)%>%
+  gather(key = "variable", value = "value", -area) %>%
+  spread(key = "area", value = "value")%>%
+  column_to_rownames(var = "variable")
+
+kable(ProbE2,format = "html",caption = "Test for equal probability of caputre during Event 2")%>%kable_styling(full_width = FALSE)
+print(chisq.test(ProbE2))
+print(ifelse(chisq.test(ProbE2)$p.value < 0.05, "Reject H0", "Fail to Reject H0"))
+```
+
+<hr style="border:1px solid gray"> 
+
+### Abundance Estimate (14+)
+
+```{r Abundance Est 14+}
+n1 <- length(M)
+n2 <- length(C)
+m2 <- length(R)
+
+Nhat_14 <- (n1*(n2+1)) / (m2 +1)
+VarNhat_14 <- ((n1^2)*(n2+1)*(n2-m2)) / (((m2 +1)^2)*(m2+2))
+lower_bound <- Nhat_14 - 1.96 * sqrt(VarNhat_14)
+upper_bound <- Nhat_14 + 1.96 * sqrt(VarNhat_14)
+
+# Create a data frame
+
+estimates <- data.frame(
+  "Abundance Estimate" = Nhat_14,
+  "Variance" = VarNhat_14,
+  "Lower95_CI" = lower_bound,
+  "Upper95_CI" = upper_bound
+)
+
+# Print as a nice table
+kable(estimates, format = "html")%>%kable_styling(full_width = FALSE)
+```
+
+<hr style="border:2px solid black">
+
+## **15+ (ForkLength $\ge$ 355.1573 FL)**
+
+```{r subset 15+, message=FALSE,include=FALSE}
+data15 <- data %>% filter(FL_mm >= size_table$FL_equivalent[size_table$Inches ==15])
+M <- data15 %>% filter(Event == 1) %>% pull(FL_mm)
+C <- data15 %>% filter(Event == 2) %>% pull(FL_mm)
+R <- data15 %>% filter(Recap_Y_N == "y") %>% pull(FL_mm)
+
+```
+
+### KS-Tests
+
+```{r ECDF plot 15+}
+combined_data <- data.frame(
+  FL_mm = c(M, C, R),
+  Category = rep(c("M", "C", "R"), times = c(length(M), length(C), length(R)))
+)
+
+# Create a cumulative distribution plot
+ggplot(combined_data, aes(x = FL_mm, color = Category)) +
+  stat_ecdf(geom = "step") +
+  labs(x = "Length (mm)", y = "Cumulative Proportion",title = "ECDF (15+)") +
+  scale_x_continuous(breaks = seq(250, 500, by = 25))+
+  theme_minimal()
+```
+
+```{r KS-test table 15+,}
+# Perform KS Test for M vs R, C vs R, M vs C
+ks_test_M_R <- ks.test(M, R)
+ks_test_C_R <- ks.test(C, R)
+ks_test_M_C <- ks.test(M, C)
+
+# Extract KS Test results
+results_table <- data.frame(
+  "M_vs_R" = c(round(ks_test_M_R$statistic,3), round(ks_test_M_R$p.value,3), ifelse(ks_test_M_R$p.value < 0.05, "Reject H0", "Fail to Reject H0")),
+  "C_vs_R" = c(round(ks_test_C_R$statistic,3), round(ks_test_C_R$p.value,3), ifelse(ks_test_C_R$p.value < 0.05, "Reject H0", "Fail to Reject H0")),
+  "M_vs_C" = c(round(ks_test_M_C$statistic,3), round(ks_test_M_C$p.value,3), ifelse(ks_test_M_C$p.value < 0.05, "Reject H0", "Fail to Reject H0"))
+)
+
+# Add row names
+rownames(results_table) <- c("D statistic", "p-value", "Decision")
+
+# Print the results table
+kable(results_table,format = "html", caption="KS-tests for size selective sampling")%>%kable_styling(bootstrap_options = "condensed",full_width = F)
+```
+
+<hr style="border:1px solid gray">
+### CHI SQ TESTS
+
+#### Test for Complete Mixing
+
+```{r complete mixing test 15+}
+TagMix <- data15 %>%
+  group_by(Tag)%>%
+  filter(n() == 2)%>%
+  reframe(
+    area_marked = first(area[Event == 1]),
+    area_recaptured = first(area[Event == 2]))%>%
+  count(area_marked, area_recaptured) %>%
+  spread(area_recaptured, value = n, fill = 0) %>%
+  column_to_rownames(var = "area_marked")
+
+counts <- data15 %>% group_by(area) %>% 
+  summarize(n1 = sum(Event == 1 ),
+            m2 = sum(RecapE1 == "y",na.rm = TRUE))
+  
+Mixtable = cbind(TagMix, n1_m2 = counts$n1 - counts$m2)
+
+kable(Mixtable,format = "html",caption = "Test for complete mixing")%>%kable_styling(full_width = FALSE)%>%
+  add_header_above(header = c(" " = 1, "Area Recaptured" = 5," " =1))
+print(chisq.test(Mixtable))
+print(ifelse(chisq.test(Mixtable)$p.value < 0.05, "Reject H0", "Fail to Reject H0"))
+```
+
+#### Test for equal probability of capture during Event 1 (H0 = Every fish has an equal probability of being captured and marked during event 1)
+
+```{r test for equal prob of capture during E1 15+}
+ProbE1 <- data15 %>% filter(Duplicates != -1)%>%
+  group_by(area) %>% 
+  summarize(m2 = sum(Recap_Y_N == "y",na.rm = TRUE),
+            n2_m2 = sum(Event == 2) - m2)%>%
+  gather(key = "variable", value = "value", -area) %>%
+  spread(key = "area", value = "value")%>%
+  column_to_rownames(var = "variable")
+
+kable(ProbE1,format = "html",caption = "Test for equal probability of caputre during Event 1")%>%kable_styling(full_width = FALSE)
+print(chisq.test(ProbE1))
+print(ifelse(chisq.test(ProbE1)$p.value < 0.05, "Reject H0", "Fail to Reject H0"))
+```
+
+#### Test for equal probability of capture during Event 2 (H0 = Every fish has an equal probability of being captured and marked during event 2)
+
+```{r test for equal prob of capture during E2 15+}
+ProbE2 <- data15 %>% filter(Duplicates != -1)%>%
+  group_by(area) %>% 
+  summarize(m2 = sum(RecapE1 == "y",na.rm = TRUE),
+            n1_m2 = sum(Event == 1) - m2)%>%
+  gather(key = "variable", value = "value", -area) %>%
+  spread(key = "area", value = "value")%>%
+  column_to_rownames(var = "variable")
+
+kable(ProbE2,format = "html",caption = "Test for equal probability of caputre during Event 2")%>%kable_styling(full_width = FALSE)
+print(chisq.test(ProbE2))
+print(ifelse(chisq.test(ProbE2)$p.value < 0.05, "Reject H0", "Fail to Reject H0"))
+```
+
+<hr style="border:1px solid gray"> 
+
+### Abundance Estimate (15+)
+
+```{r Abundance Est 15+}
+n1 <- length(M)
+n2 <- length(C)
+m2 <- length(R)
+
+Nhat_15 <- (n1*(n2+1)) / (m2 +1)
+VarNhat_15 <- ((n1^2)*(n2+1)*(n2-m2)) / (((m2 +1)^2)*(m2+2))
+lower_bound <- Nhat_15 - 1.96 * sqrt(VarNhat_15)
+upper_bound <- Nhat_15 + 1.96 * sqrt(VarNhat_15)
+
+# Create a data frame
+
+estimates <- data.frame(
+  "Abundance Estimate" = Nhat_15,
+  "Variance" = VarNhat_15,
+  "Lower95_CI" = lower_bound,
+  "Upper95_CI" = upper_bound
+)
+
+# Print as a nice table
+kable(estimates, format = "html")%>%kable_styling(full_width = FALSE)
+```
+
+<hr style="border:2px solid black">
+
+## **16+ (ForkLength $\ge$ 378.9992 FL)**
+
+```{r subset 16+, message=FALSE,include=FALSE}
+data16 <- data %>% filter(FL_mm >= size_table$FL_equivalent[size_table$Inches ==16])
+M <- data16 %>% filter(Event == 1) %>% pull(FL_mm)
+C <- data16 %>% filter(Event == 2) %>% pull(FL_mm)
+R <- data16 %>% filter(Recap_Y_N == "y") %>% pull(FL_mm)
+
+```
+
+### KS-Tests
+
+```{r ECDF plot 16+}
+combined_data <- data.frame(
+  FL_mm = c(M, C, R),
+  Category = rep(c("M", "C", "R"), times = c(length(M), length(C), length(R)))
+)
+
+# Create a cumulative distribution plot
+ggplot(combined_data, aes(x = FL_mm, color = Category)) +
+  stat_ecdf(geom = "step") +
+  labs(x = "Length (mm)", y = "Cumulative Proportion",title = "ECDF (16+)") +
+  scale_x_continuous(breaks = seq(250, 500, by = 25))+
+  theme_minimal()
+```
+
+```{r KS-test table 16+,}
+# Perform KS Test for M vs R, C vs R, M vs C
+ks_test_M_R <- ks.test(M, R)
+ks_test_C_R <- ks.test(C, R)
+ks_test_M_C <- ks.test(M, C)
+
+# Extract KS Test results
+results_table <- data.frame(
+  "M_vs_R" = c(round(ks_test_M_R$statistic,3), round(ks_test_M_R$p.value,3), ifelse(ks_test_M_R$p.value < 0.05, "Reject H0", "Fail to Reject H0")),
+  "C_vs_R" = c(round(ks_test_C_R$statistic,3), round(ks_test_C_R$p.value,3), ifelse(ks_test_C_R$p.value < 0.05, "Reject H0", "Fail to Reject H0")),
+  "M_vs_C" = c(round(ks_test_M_C$statistic,3), round(ks_test_M_C$p.value,3), ifelse(ks_test_M_C$p.value < 0.05, "Reject H0", "Fail to Reject H0"))
+)
+
+# Add row names
+rownames(results_table) <- c("D statistic", "p-value", "Decision")
+
+# Print the results table
+kable(results_table,format = "html", caption="KS-tests for size selective sampling")%>%kable_styling(bootstrap_options = "condensed",full_width = F)
+```
+
+<hr style="border:1px solid gray">
+### CHI SQ TESTS
+
+#### Test for Complete Mixing
+
+```{r complete mixing test 16+}
+TagMix <- data16 %>%
+  group_by(Tag)%>%
+  filter(n() == 2)%>%
+  reframe(
+    area_marked = first(area[Event == 1]),
+    area_recaptured = first(area[Event == 2]))%>%
+  count(area_marked, area_recaptured) %>%
+  spread(area_recaptured, value = n, fill = 0) %>%
+  column_to_rownames(var = "area_marked")
+
+counts <- data16 %>% group_by(area) %>% 
+  summarize(n1 = sum(Event == 1 ),
+            m2 = sum(RecapE1 == "y",na.rm = TRUE))
+  
+Mixtable = cbind(TagMix, n1_m2 = counts$n1 - counts$m2)
+
+kable(Mixtable,format = "html",caption = "Test for complete mixing")%>%kable_styling(full_width = FALSE)%>%
+  add_header_above(header = c(" " = 1, "Area Recaptured" = 5," " =1))
+print(chisq.test(Mixtable))
+print(ifelse(chisq.test(Mixtable)$p.value < 0.05, "Reject H0", "Fail to Reject H0"))
+```
+
+#### Test for equal probability of capture during Event 1 (H0 = Every fish has an equal probability of being captured and marked during event 1)
+
+```{r test for equal prob of capture during E1 16+}
+ProbE1 <- data16 %>% filter(Duplicates != -1)%>%
+  group_by(area) %>% 
+  summarize(m2 = sum(Recap_Y_N == "y",na.rm = TRUE),
+            n2_m2 = sum(Event == 2) - m2)%>%
+  gather(key = "variable", value = "value", -area) %>%
+  spread(key = "area", value = "value")%>%
+  column_to_rownames(var = "variable")
+
+kable(ProbE1,format = "html",caption = "Test for equal probability of caputre during Event 1")%>%kable_styling(full_width = FALSE)
+print(chisq.test(ProbE1))
+print(ifelse(chisq.test(ProbE1)$p.value < 0.05, "Reject H0", "Fail to Reject H0"))
+```
+
+#### Test for equal probability of capture during Event 2 (H0 = Every fish has an equal probability of being captured and marked during event 2)
+
+```{r test for equal prob of capture during E2 16+}
+ProbE2 <- data16 %>% filter(Duplicates != -1)%>%
+  group_by(area) %>% 
+  summarize(m2 = sum(RecapE1 == "y",na.rm = TRUE),
+            n1_m2 = sum(Event == 1) - m2)%>%
+  gather(key = "variable", value = "value", -area) %>%
+  spread(key = "area", value = "value")%>%
+  column_to_rownames(var = "variable")
+
+kable(ProbE2,format = "html",caption = "Test for equal probability of caputre during Event 2")%>%kable_styling(full_width = FALSE)
+print(chisq.test(ProbE2))
+print(ifelse(chisq.test(ProbE2)$p.value < 0.05, "Reject H0", "Fail to Reject H0"))
+```
+
+<hr style="border:1px solid gray"> 
+
+### Abundance Estimate (16+)
+
+```{r Abundance Est 16+}
+n1 <- length(M)
+n2 <- length(C)
+m2 <- length(R)
+
+Nhat_16 <- (n1*(n2+1)) / (m2 +1)
+VarNhat_16 <- ((n1^2)*(n2+1)*(n2-m2)) / (((m2 +1)^2)*(m2+2))
+lower_bound <- Nhat_16 - 1.96 * sqrt(VarNhat_16)
+upper_bound <- Nhat_16 + 1.96 * sqrt(VarNhat_16)
+
+# Create a data frame
+
+estimates <- data.frame(
+  "Abundance Estimate" = Nhat_16,
+  "Variance" = VarNhat_16,
+  "Lower95_CI" = lower_bound,
+  "Upper95_CI" = upper_bound
+)
+
+# Print as a nice table
+kable(estimates, format = "html")%>%kable_styling(full_width = FALSE)
+```
+
+# {-}
+<hr style="border:2px solid black">
+
+# Results Table {.tabset}
+## MR- Subset
+
+```{r Results Table}
+
+Results <- data.frame(
+  size_class = c("270mm+","12\" and greater", "13\" and greater", "14\" and greater", "15\" and greater", "16\" and greater"), 
+  M = c(data%>%filter(Event == 1)%>%nrow(),
+        data%>%filter(Event == 1 & FL_mm >= size_table$FL_equivalent[size_table$Inches == 12])%>%nrow,
+        data%>%filter(Event == 1 & FL_mm >= size_table$FL_equivalent[size_table$Inches == 13])%>%nrow,
+        data%>%filter(Event == 1 & FL_mm >= size_table$FL_equivalent[size_table$Inches == 14])%>%nrow,
+        data%>%filter(Event == 1 & FL_mm >= size_table$FL_equivalent[size_table$Inches == 15])%>%nrow,
+        data%>%filter(Event == 1 & FL_mm >= size_table$FL_equivalent[size_table$Inches == 16])%>%nrow
+        ),
+  C = c(data%>%filter(Event == 2)%>%nrow(),
+        data%>%filter(Event == 2 & FL_mm >= size_table$FL_equivalent[size_table$Inches == 12])%>%nrow,
+        data%>%filter(Event == 2 & FL_mm >= size_table$FL_equivalent[size_table$Inches == 13])%>%nrow,
+        data%>%filter(Event == 2 & FL_mm >= size_table$FL_equivalent[size_table$Inches == 14])%>%nrow,
+        data%>%filter(Event == 2 & FL_mm >= size_table$FL_equivalent[size_table$Inches == 15])%>%nrow,
+        data%>%filter(Event == 2 & FL_mm >= size_table$FL_equivalent[size_table$Inches == 16])%>%nrow
+        ),
+  R = c(data%>%filter(!is.na(Recap_Y_N))%>%nrow(),
+        data%>%filter(!is.na(Recap_Y_N) & FL_mm >= size_table$FL_equivalent[size_table$Inches == 12])%>%nrow,
+        data%>%filter(!is.na(Recap_Y_N) & FL_mm >= size_table$FL_equivalent[size_table$Inches == 13])%>%nrow,
+        data%>%filter(!is.na(Recap_Y_N) & FL_mm >= size_table$FL_equivalent[size_table$Inches == 14])%>%nrow,
+        data%>%filter(!is.na(Recap_Y_N) & FL_mm >= size_table$FL_equivalent[size_table$Inches == 15])%>%nrow,
+        data%>%filter(!is.na(Recap_Y_N) & FL_mm >= size_table$FL_equivalent[size_table$Inches == 16])%>%nrow
+        ),
+  Nhat = c(Nhat_all,Nhat_12,Nhat_13,Nhat_14,Nhat_15,Nhat_16),
+  Variance_Nhat = c(VarNhat_all,VarNhat_12,VarNhat_13,VarNhat_14,VarNhat_15,VarNhat_16),
+  L95CI = c(Nhat_all - 1.96 * sqrt(VarNhat_all),
+            Nhat_12 - 1.96 * sqrt(VarNhat_12),
+            Nhat_13 - 1.96 * sqrt(VarNhat_13),
+            Nhat_14 - 1.96 * sqrt(VarNhat_14),
+            Nhat_15 - 1.96 * sqrt(VarNhat_15),
+            Nhat_16 - 1.96 * sqrt(VarNhat_16)),
+  U95CI = c(Nhat_all + 1.96 * sqrt(VarNhat_all),
+            Nhat_12 + 1.96 * sqrt(VarNhat_12),
+            Nhat_13 + 1.96 * sqrt(VarNhat_13),
+            Nhat_14 + 1.96 * sqrt(VarNhat_14),
+            Nhat_15 + 1.96 * sqrt(VarNhat_15),
+            Nhat_16 + 1.96 * sqrt(VarNhat_16))
+  
+)%>%mutate(
+  CV = (sqrt(Variance_Nhat) / Nhat ),
+  RP_95 = 1.96 * CV,
+  RP_90 = 1.65 * CV
+)
+
+Results%>%
+mutate(across(c(Nhat, Variance_Nhat,L95CI,U95CI), round, digits = 0),# Round to nearest whole number
+       across(c(RP_95,RP_90),round,digits = 3),
+        CV = round(CV,digits=5)) %>%
+kable(format = "html")%>%kable_styling(full_width = FALSE)
+
+```
+
+## Proportional Allocation
+
+```{r proportions estimates for open size classes,}
+
+Prop_Results <- Results %>% 
+  reframe(size_class = size_class,
+          p = (M + C - R) / 1824,
+         var_p = (p*(1-p))/(1824-1),
+         Nhat_p = Nhat_all * p,
+         var_Nhat_p = var_p*Nhat_all^2 +VarNhat_all*p^2 - var_p * VarNhat_all,
+         L95CI_p = Nhat_p - 1.96 * sqrt(var_Nhat_p),
+         U95CI_p = Nhat_p + 1.96 * sqrt(var_Nhat_p))%>%
+  mutate(CV = (sqrt(var_Nhat_p) / Nhat_p),
+          RP_95 = 1.96 * CV,
+          RP_90 = 1.65 * CV)
+
+
+Prop_Results%>%
+mutate(across(c(Nhat_p, var_Nhat_p,L95CI_p,U95CI_p), round, digits = 0),
+       across(c(RP_95,RP_90),round,digits = 3),# Round to nearest whole number
+         p = round(p, digits = 2),
+       CV = round(CV,digits=5)) %>%
+kable(format = "html")%>%kable_styling(full_width = FALSE)
+         
+```
+
+## Proportional with Discrete Size Bins
+```{r discrete size classes,}
+data_summary <- data %>%
+  filter(is.na(Recap_Y_N)) %>%
+  mutate(Size_Class = case_when(
+    FL_mm < size_table$FL_equivalent[size_table$Inches == 12] ~ '0-12',
+    FL_mm >= size_table$FL_equivalent[size_table$Inches == 12] & FL_mm < size_table$FL_equivalent[size_table$Inches == 13] ~ '12-13',
+    FL_mm >= size_table$FL_equivalent[size_table$Inches == 13] & FL_mm < size_table$FL_equivalent[size_table$Inches == 14] ~ '13-14',
+    FL_mm >= size_table$FL_equivalent[size_table$Inches == 14] & FL_mm < size_table$FL_equivalent[size_table$Inches == 15] ~ '14-15',
+    FL_mm >= size_table$FL_equivalent[size_table$Inches == 15] & FL_mm < size_table$FL_equivalent[size_table$Inches == 16] ~ '15-16',
+    FL_mm >= size_table$FL_equivalent[size_table$Inches == 16] & FL_mm < size_table$FL_equivalent[size_table$Inches == 17] ~ '16-17',
+    FL_mm >= size_table$FL_equivalent[size_table$Inches == 17] & FL_mm < size_table$FL_equivalent[size_table$Inches == 18] ~ '17-18',
+    FL_mm >= size_table$FL_equivalent[size_table$Inches == 18] & FL_mm < size_table$FL_equivalent[size_table$Inches == 19] ~ '18-19',
+    FL_mm >= size_table$FL_equivalent[size_table$Inches == 19] ~ '19+',
+    TRUE ~ 'Others'
+  )) %>%
+  group_by(Size_Class) %>%
+  reframe(n_k = n())%>% # Count the number of fish in each size class
+  mutate(p_k = n_k / sum(n_k))%>%
+  reframe(size_class = Size_Class,
+          n_k = n_k,
+          p_k = p_k,
+          var_p = (p_k*(1-p_k))/(sum(n_k)-1),
+          Nhat_p = Nhat_all * p_k,
+          var_Nhat_p = (var_p*(Nhat_all^2)) +(VarNhat_all*(p_k^2)) - (var_p * VarNhat_all),
+          L95CI_p = Nhat_p - 1.96 * sqrt(var_Nhat_p),
+          U95CI_p = Nhat_p + 1.96 * sqrt(var_Nhat_p))%>%
+  mutate(CV = (sqrt(var_Nhat_p) / Nhat_p),
+         RP_95 = 1.96 * CV,
+          RP_90 = 1.65 * CV)
+#kable(data_summary,format = "html",digits=4)%>%kable_styling(full_width = FALSE)
+
+
+data_summary %>%
+  mutate(across(c(n_k, Nhat_p, var_Nhat_p,L95CI_p,U95CI_p), round, digits = 0),  # Round to nearest whole number
+         p_k = round(p_k, digits = 2),
+         across(c(RP_95,RP_90),round,digits = 3),
+         CV = round(CV,digits = 5)) %>%  # Round to 2 decimal places
+  kable(format = "html") %>%
+  kable_styling(full_width = FALSE)
+```
+# {-}
+
+
+
+```{r, include=FALSE}
+library(ggplot2)
+
+# Combine the data from both tables (Prop_Results and Results)
+combined_data <- merge(Prop_Results, Results, by = "size_class")
+
+# Create a ggplot for comparison
+ggplot(combined_data, aes(x = size_class)) +
+  geom_errorbar(aes(ymin = L95CI_p, ymax = U95CI_p, color = "Prop_Results"),
+                position = position_dodge(width = 5), width = 0.2) +  # Jitter error bars for Prop_Results
+  geom_errorbar(aes(ymin = L95CI, ymax = U95CI, color = "Results"),
+                position = position_dodge(width = -5), width = 0.2) +   # Jitter error bars for Results
+  geom_point(aes(y = Nhat, color = "Nhat"), position = position_dodge(width = c(-0.2, 0.2)), 
+             size = 3, shape = 16) +  # Jitter points for Nhat
+  labs(title = "Comparison of Methods for Size Class",
+       x = "Size Class",
+       y = "Nhat") +
+  scale_color_manual(name = "Method",
+                     values = c("Prop_Results" = "blue", "Results" = "red", "Nhat" = "black"),
+                     labels = c("Proportional Allocation", "MR Subsetting", "Nhat")) +
+  theme_minimal()
+
+
+
+```
+
+
+```{r chi sq by size class}
+
+size_binE1.1 <- Do %>%
+  group_by(Size_Class)%>% 
+  summarize(m2 = sum(Recap_Y_N == "y",na.rm = TRUE),
+            n2_m2 = sum(Event == 2) - m2)%>%
+  gather(key = "variable", value = "value", -Size_Class) %>%
+  spread(key = "Size_Class", value = "value")%>%
+  column_to_rownames(var = "variable")
+
+
+
+size_binE2.1 <- data%>% filter(Duplicates != -1)%>%
+  mutate(Size_Class = case_when(
+    FL_mm < size_table$FL_equivalent[size_table$Inches == 12] ~ '0-12',
+    FL_mm >= size_table$FL_equivalent[size_table$Inches == 12] & FL_mm < size_table$FL_equivalent[size_table$Inches == 13] ~ '12-13',
+    FL_mm >= size_table$FL_equivalent[size_table$Inches == 13] & FL_mm < size_table$FL_equivalent[size_table$Inches == 14] ~ '13-14',
+    FL_mm >= size_table$FL_equivalent[size_table$Inches == 14] & FL_mm < size_table$FL_equivalent[size_table$Inches == 15] ~ '14-15',
+    FL_mm >= size_table$FL_equivalent[size_table$Inches == 15] & FL_mm < size_table$FL_equivalent[size_table$Inches == 16] ~ '15-16',
+    FL_mm >= size_table$FL_equivalent[size_table$Inches == 16] & FL_mm < size_table$FL_equivalent[size_table$Inches == 17] ~ '16-17',
+    FL_mm >= size_table$FL_equivalent[size_table$Inches == 17] & FL_mm < size_table$FL_equivalent[size_table$Inches == 18] ~ '17-18',
+    FL_mm >= size_table$FL_equivalent[size_table$Inches == 18] & FL_mm < size_table$FL_equivalent[size_table$Inches == 19] ~ '18-19',
+    FL_mm >= size_table$FL_equivalent[size_table$Inches == 19] ~ '19+',
+    TRUE ~ 'Others'
+  )) %>%
+  group_by(Size_Class)%>% 
+  summarize(m2 = sum(RecapE1 == "y",na.rm = TRUE),
+            n1_m2 = sum(Event == 1) - m2)%>%
+  gather(key = "variable", value = "value", -Size_Class) %>%
+  spread(key = "Size_Class", value = "value")%>%
+  column_to_rownames(var = "variable")
+
+
+ChiE1 = chisq.test(size_binE1.1)
+ChiE2 = chisq.test(size_binE2)
+
+ChiE1$expected
+ChiE2$expected
+
+  
+```
+```{r SML attempt}
+size_binE1_SML <- data%>% filter(Duplicates != -1)%>%
+  mutate(Size_Class = case_when(
+    FL_mm < size_table$FL_equivalent[size_table$Inches == 15] ~ 'Small',
+    FL_mm >= size_table$FL_equivalent[size_table$Inches == 15] & FL_mm < size_table$FL_equivalent[size_table$Inches == 17] ~ 'Medium',
+    FL_mm >= size_table$FL_equivalent[size_table$Inches == 17] ~ 'Large',
+    TRUE ~ 'Others'
+  )) %>%
+  group_by(Size_Class)%>% 
+  summarize(m2 = sum(Recap_Y_N == "y",na.rm = TRUE),
+            n2_m2 = sum(Event == 2) - m2)%>%
+  gather(key = "variable", value = "value", -Size_Class) %>%
+  spread(key = "Size_Class", value = "value")%>%
+  column_to_rownames(var = "variable")
+
+
+
+size_binE2_SML <- data%>% filter(Duplicates != -1)%>%
+  mutate(Size_Class = case_when(
+    FL_mm < size_table$FL_equivalent[size_table$Inches == 15] ~ 'Small',
+    FL_mm >= size_table$FL_equivalent[size_table$Inches == 15] & FL_mm < size_table$FL_equivalent[size_table$Inches == 17] ~ 'Medium',
+    FL_mm >= size_table$FL_equivalent[size_table$Inches == 17] ~ 'Large',
+    TRUE ~ 'Others'
+  )) %>%
+  group_by(Size_Class)%>% 
+  summarize(m2 = sum(RecapE1 == "y",na.rm = TRUE),
+            n1_m2 = sum(Event == 1) - m2)%>%
+  gather(key = "variable", value = "value", -Size_Class) %>%
+  spread(key = "Size_Class", value = "value")%>%
+  column_to_rownames(var = "variable")
+
+chisq.test(size_binE1_SML)
+chisq.test(size_binE2_SML)
+
+```
+
+```{r 2 category test, warning=FALSE,message=FALSE}
+size_binE1_12 <- data%>% filter(Duplicates != -1)%>%
+  mutate(Size_Class = case_when(
+    FL_mm < size_table$FL_equivalent[size_table$Inches == 12] ~ '0-12',
+    FL_mm >= size_table$FL_equivalent[size_table$Inches == 12]~ '12+',
+    TRUE ~ 'Others'
+  )) %>%
+  group_by(Size_Class)%>% 
+  summarize(m2 = sum(Recap_Y_N == "y",na.rm = TRUE),
+            n2_m2 = sum(Event == 2) - m2)%>%
+  gather(key = "variable", value = "value", -Size_Class) %>%
+  spread(key = "Size_Class", value = "value")%>%
+  column_to_rownames(var = "variable")
+
+
+
+size_binE2_12 <- data%>% filter(Duplicates != -1)%>%
+  mutate(Size_Class = case_when(
+    FL_mm < size_table$FL_equivalent[size_table$Inches == 12] ~ '0-12',
+    FL_mm >= size_table$FL_equivalent[size_table$Inches == 12]~ '12+',
+    TRUE ~ 'Others'
+  )) %>%
+  group_by(Size_Class)%>% 
+  summarize(m2 = sum(Recap_Y_N == "y",na.rm = TRUE),
+            n1_m2 = sum(Event == 1) - m2)%>%
+  gather(key = "variable", value = "value", -Size_Class) %>%
+  spread(key = "Size_Class", value = "value")%>%
+  column_to_rownames(var = "variable")
+
+
+chisq.test(size_binE1_12)$observed
+chisq.test(size_binE1_12)$expected
+chisq.test(size_binE1_12)
+chisq.test(size_binE2_12)$observed
+chisq.test(size_binE2_12)$expected
+chisq.test(size_binE2_12)
+
+
+chisq.test(data%>% filter(Duplicates != -1)%>%
+  mutate(Size_Class = case_when(
+    FL_mm < size_table$FL_equivalent[size_table$Inches == 16] ~ '0-15',
+    FL_mm >= size_table$FL_equivalent[size_table$Inches == 16]~ '15+',
+    TRUE ~ 'Others'
+  )) %>%
+  group_by(Size_Class)%>% 
+  summarize(m2 = sum(Recap_Y_N == "y",na.rm = TRUE),
+            n2_m2 = sum(Event == 2) - m2)%>%
+  gather(key = "variable", value = "value", -Size_Class) %>%
+  spread(key = "Size_Class", value = "value")%>%
+  column_to_rownames(var = "variable"))
+
+
+
+```
