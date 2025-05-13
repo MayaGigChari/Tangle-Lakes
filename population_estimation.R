@@ -1,4 +1,8 @@
 #this is a script for universal functions for the mark/recap population estimation 
+#TODO: 
+
+#ask: is the test for complete mixing column s+1 supposed to represent the number of fish tagged in that strat that were not recapped at all, or the number of fish tagged in a strata that were not recapped in that strata? 
+#TODO: REALLY ASK THIS ^
 
 ###GLOBAL VARIABLES: 
 
@@ -64,25 +68,73 @@ ks_test<- function(data, events, lakename, length_variable)
 
 
 #Test 1: Test for complete mixing. 
+#not recaptured are those that were marked in n1 and not recaptured in n1? 
 
-chi2_markrecap<- function(dataframe)
+#this can't have the m2 redundancy. 
+
+#this does assume that every fish is marked with a floy. But that's not always the case, so I will base this on event num labels instead. 
+#is the not recapped column not recapped in that region, or not recpaped in general 
+#should be fixed now. 
+
+#if there is no floy/pit tag and no notes but the fish is still labeled as n1, we will remove it from the dataset for this test. 
+
+
+
+petersen_matrix_tyerscode<- function(dataframe)
 {
-  chi2<- sf_df_shallowround_regions %>%
-    group_by(Floy)%>%
+  all_regions <- unique(dataframe$region)
+  
+  chi2 <- dataframe %>%
+    group_by(Floy) %>%
     reframe(
       area_marked = region[Year_capped == 2023][1],
-      area_recaptured = region[Year_capped == 2024][1])%>%
+      area_recaptured = region[Year_capped == 2024][1]
+    ) %>%
     count(area_marked, area_recaptured) %>%
-    drop_na() %>%
-    spread(area_recaptured, value = n, fill = 0) %>%
-    column_to_rownames("area_marked")
+    complete(area_marked = all_regions, area_recaptured = all_regions, fill = list(n = 0)) %>%
+    pivot_wider(names_from = area_recaptured, values_from = n, values_fill = 0) %>%
+    drop_na(area_marked)%>%#it is not helpful to us if we have no idea where the fish was caught originally. 
+    as.data.frame()
+  
+  chi2$"NA"<-NULL
+  
+  rownames(chi2)<- chi2$area_marked
+  chi2$area_marked<-NULL
+  return(chi2)
+  
+}
+chi2_markrecap<- function(dataframe)
+{
+  all_regions <- unique(dataframe$region)
+  
+  # Build chi2 matrix with all region combinations, even missing ones
+  chi2 <- dataframe %>%
+    group_by(Floy) %>%
+    reframe(
+      area_marked = region[Year_capped == 2023][1],
+      area_recaptured = region[Year_capped == 2024][1]
+    ) %>%
+    count(area_marked, area_recaptured) %>%
+    complete(area_marked = all_regions, area_recaptured = all_regions, fill = list(n = 0)) %>%
+    pivot_wider(names_from = area_recaptured, values_from = n, values_fill = 0) %>%
+    drop_na(area_marked)%>%#it is not helpful to us if we have no idea where the fish was caught originally. 
+    as.data.frame()
+  
+  chi2$"NA"<-NULL
+
+  rownames(chi2)<- chi2$area_marked
+  chi2$area_marked<-NULL
   
   counts <- dataframe %>% group_by(region) %>% 
-    summarize(n1 = sum(stat == "n1"),
-              m2 = sum(stat == "m2",na.rm = TRUE))
+    summarize(n1 = sum(stat == "n1"))
+  
+
+  not_recapped<- counts$n1- rowSums(chi2)
+  chi2$not_recapped<- not_recapped
+  
   
   Mixtable_matrix <- as.data.frame(chi2)
-  Mixtable_matrix$n1_m2 = counts$n1-counts$m2
+
   
   #totals <- colSums(Mixtable_matrix, na.rm = TRUE)
   
@@ -112,7 +164,7 @@ petersen_consistency<- function(data, strat)#strat is region
   complete_mix<- data %>%
     group_by({{strat}}) %>%
     summarize(m2 = sum(stat == "m2"),
-              n2_nomark = sum(stat == "n2")) %>% #this is not n2-m2 because it is already formulated that way. 
+              n2_nomark = sum(stat == "n1")-m2) %>% #this is not n2-m2 because it is already formulated that way. 
     pivot_longer(cols = c(m2, n2_nomark), names_to = "variable", values_to = "value")%>%
     pivot_wider(names_from = {{strat}}, values_from = value) %>%
     as.data.frame()
@@ -125,17 +177,18 @@ petersen_consistency<- function(data, strat)#strat is region
   chisq_result_complete_mixing <- chisq.test(complete_mix)
   
   
-  #test for equal probability of capture during Event 2 slash equal proportions test? 
+  #test for equal probability of capture during Event 2 slash equal proportions test?
+  #fix this. 
   equal_prop<- data%>%
     group_by({{strat}})%>%
     summarize(m2 = sum(stat == "m2"),
-              n1_norecap = sum(stat == "n1")-m2)%>%
+              n1_norecap = sum(stat == "n1")-sum(stat == "m2"))%>%
     pivot_longer(cols = c(m2, n1_norecap), names_to = "variable", values_to = "value") %>%
     pivot_wider(names_from = {{strat}}, values_from = value) %>%
     as.data.frame()
   rownames(equal_prop)<- equal_prop$variable
   equal_prop$variable<- NULL
-  
+  print(equal_prop)
   # Conduct the chi-square test
   chisq_result_equal_proportions <- chisq.test(equal_prop)
   

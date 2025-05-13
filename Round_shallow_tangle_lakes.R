@@ -524,14 +524,15 @@ sf_df_nounk_shallowround<- sf_df_nounk%>%
 
 
 #TEST FOR COMPLETE MIXING WITHOUT LENGTH-CORRECTED DATA. 
-test1<- chi2_markrecap(tibble(sf_df_shallowround_regions))
-pet_diag_1<- chisq.test(test1)  
-
+test1_lower<- chi2_markrecap(tibble(sf_df_shallowround_regions))
+pet_diag_1_lower_chi2<- chisq.test(test1_lower)
+pet_diag_1_lower_fisher<- fisher.test(test1_lower)
+#we obviously do not have cpmplete mixing with this stratification pattern. 
 
 #redo the test, filtering the dataframe for corrected lengths that do not meet the cutoff for 2023. 
 #this doesn't seem to affect the outcome, because n2 individuals that are not recaps are not really considered. 
-test1_corrected<- chi2_markrecap(tibble(sf_df_shallowround_regions%>%filter(corrected_length >= min_size_capture_shallowround$min)))
-pet_diag_1_corrected<- chisq.test(test1_corrected)  
+test1_corrected_lower<- chi2_markrecap(tibble(sf_df_shallowround_regions%>%filter(corrected_length >= min_size_capture_shallowround$min)))
+pet_diag_1_corrected_lower<- chisq.test(test1_corrected_lower)  
 
 #seems like this passed. But I also sort of arbitrarily chose region cutoffs and there is a very small sample size. 
 
@@ -540,16 +541,35 @@ pet_diag_1_corrected<- chisq.test(test1_corrected)
 #also test for Test for equal probability of capture during Event 2 (H0 = Every fish has an equal probability of being captured and marked during event 2)
 
 ### TEST FOR EQUAL PROBABILITY OF CAPTURE IN EVENT 1 AND EVENT 2
-ret<- petersen_consistency(tibble(sf_df_shallowround_regions), region)
-ret$consistency_p_values
+#re_lower<- petersen_consistency(tibble(sf_df_shallowround_regions), region)
+#ret$consistency_p_values
 
 #redo the test, filtering the dataframe for corrected lengths that do not meet the cutoff for 2023. 
 
-ret_corrected<- petersen_consistency(tibble(sf_df_shallowround_regions%>%filter(corrected_length >= min_size_capture_shallowround$min)), region)
-ret_corrected$consistency_p_values
+#ret_corrected<- petersen_consistency(tibble(sf_df_shallowround_regions%>%filter(corrected_length >= min_size_capture_shallowround$min)), region)
+#ret_corrected$consistency_p_values
 #the ultimate outcome of the test does not change. Cool! 
 
 
+#########################################################
+###MATT TYERS' TESTS. mine doesn't work so we will use his for now.
+#########################################################
+
+### TEST FOR EQUAL PROBABILITY OF CAPTURE IN EVENT 1 AND EVENT 2
+
+#first, let's remove the fish that were too small in event 1 to be caught 
+
+sf_df_shallowround_regions_small_rem<-tibble(sf_df_shallowround_regions%>%filter(corrected_length >= min_size_capture_shallowround$min))
+counts_by_strata_shallowround <-sf_df_shallowround_regions_small_rem %>% group_by(region) %>% 
+  summarize(n1 = sum(stat == "n1"), n2 = sum(stat == "n2")+sum(stat == "m2"), m2 = sum(stat == "m2"))
+
+matrix_shallowround<- petersen_matrix_tyerscode(sf_df_shallowround_regions_small_rem)
+matrix_shallowround$"NA"<-NULL
+
+consistencytest(counts_by_strata_shallowround$n1, counts_by_strata_shallowround$n2, stratamat = matrix_shallowround)
+
+
+#at least one passed. 
 #given that we have no stratification by length/sex necessary, and the petersen estimator is consistent, let's go ahead with a traditional population estimate. 
 #############################################################
 #################### POPULATION ESTIMATION 
@@ -613,7 +633,7 @@ bailey_estimate_trunc<- pop_calc(Bailey_funcs, data_full_shallowround_truncated_
 
 #as we can see, population estimates are significantly lower when we remove "uncatchable" n2 fish from the population. 
 
-
+#We collected an appropriate amount of data to satisfy the objective precision criteria. 
 
 #great! now we have a cool pipeline for everything. For the rest of the lakes, we will not do ALL these steps, we will use the simplifications where we can. 
 

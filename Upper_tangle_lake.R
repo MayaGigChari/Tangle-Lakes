@@ -4,9 +4,12 @@
 #For the m2 ecdf distribution, should I be using m2 from event 2 lengths or m2 from event 1 lengths. 
 #Make sure that the one "UNK" floy was not used in the length-correction estimates. 
 #I think I should be using the m2 from event 1. 
+#Determine some way to do a power analysis. 
 
 
 library(tidyverse)
+library(sf)
+library(recapr)
 
 #######################################
 ###STEP 1: EVALUATE GROWTH
@@ -137,7 +140,7 @@ data_full_Upper_n1n2 <- data_full_Upper_n1n2 %>%
 
 #just visualizing the continuous distribution first 
 
-Upper_continuous_viz<- plot_length_dist_continuous(data_full_Upper_n1n2, lakeSystem = "Shallow-Round")
+Upper_continuous_viz<- plot_length_dist_continuous(data_full_Upper_n1n2, lakeSystem = "Upper")
 
 #THIS is a very strange distribution for 2024 upper lake. Not many fish were caught, and it looks like one in each size bin was caught. 
 Upper_continuous_viz$full_distribution_years_sep
@@ -245,7 +248,7 @@ data_full_Upper_n1n2_corrected<- data_full_Upper_ld_copy%>%
 data_full_Upper_n1n2_corrected<- data_full_Upper_n1n2_corrected %>%
   mutate(Year_capped = year(Date))
 
-Upper_continuous_viz_correct<- plot_length_dist_continuous(data_full_Upper_n1n2_corrected, lakeSystem = "Shallow-Round")
+Upper_continuous_viz_correct<- plot_length_dist_continuous(data_full_Upper_n1n2_corrected, lakeSystem = "Upper")
 
 #it only makes sense to look at both years now because the 2024 data has been corrected, so no longer really represents 2024.
 
@@ -315,7 +318,7 @@ data_full_Upper_n1n2_corrected_trunc<- data_full_Upper_trunc_copy%>%
 data_full_Upper_n1n2_corrected_trunc<- data_full_Upper_n1n2_corrected_trunc %>%
   mutate(Year_capped = year(Date))
 
-Upper_continuous_viz_trunc<- plot_length_dist_continuous(data_full_Upper_n1n2_corrected_trunc, lakeSystem = "Shallow-Round")
+Upper_continuous_viz_trunc<- plot_length_dist_continuous(data_full_Upper_n1n2_corrected_trunc, lakeSystem = "Upper")
 
 #it only makes sense to look at both years now because the 2024 data has been corrected, so no longer really represents 2024.
 
@@ -370,21 +373,19 @@ sf_df_nounk <- sf_df %>%
   filter(Floy != "UNK" | is.na(Floy))
 
 
-#need to go by stats now. 
-sf_df_Upper_r1<- st_crop(sf_df_nounk, shallowround_lake_region_1)
-sf_df_shallowround_r1$region<-1
-sf_df_shallowround_r2<- st_crop(sf_df_nounk, shallowround_lake_region_2)
-sf_df_shallowround_r2$region<-2
-sf_df_shallowround_r3<- st_crop(sf_df_nounk, shallowround_lake_region_3)
-sf_df_shallowround_r3$region<-3
 
-sf_df_shallowround_regions<- sf_df_shallowround_r1%>%
-  rbind(sf_df_shallowround_r2)%>%
-  rbind(sf_df_shallowround_r3)
-#total of 255. double check against this 
-sf_df_nounk_shallowround<- sf_df_nounk%>%
-  filter(Lake %in% c("Shallow", "Round"))%>%
-  count()
+
+#need to go by stats now. 
+sf_df_Upper_r1<- st_crop(sf_df_nounk, upper_lake_region_1)
+sf_df_Upper_r1$region<-1
+sf_df_Upper_r2<- st_crop(sf_df_nounk, upper_lake_region_2)
+sf_df_Upper_r2$region<-2
+sf_df_Upper_r3<- st_crop(sf_df_nounk, upper_lake_region_3)
+sf_df_Upper_r3$region<-3
+
+sf_df_Upper_regions<- sf_df_Upper_r1%>%
+  rbind(sf_df_Upper_r2)%>%
+  rbind(sf_df_Upper_r3)
 
 
 #not sure what the correct format is for the chi2 test here. 
@@ -393,33 +394,58 @@ sf_df_nounk_shallowround<- sf_df_nounk%>%
 
 
 #TEST FOR COMPLETE MIXING WITHOUT LENGTH-CORRECTED DATA. 
-test1<- chi2_markrecap(tibble(sf_df_shallowround_regions))
-pet_diag_1<- chisq.test(test1)  
 
+#wonder if this is correct. 
+
+#there appears to be one fish where area_marked is not given but area recapped is 1. What is going on with this fish/floy? 
+#perhaps it is a floy that has an NA for 2023? 
+test1_upper<- chi2_markrecap(tibble(sf_df_Upper_regions))
+pet_diag_1<- chisq.test(test1_upper) 
+fisher.test(test1_upper)
+#try matt tyers's test. 
 
 #redo the test, filtering the dataframe for corrected lengths that do not meet the cutoff for 2023. 
 #this doesn't seem to affect the outcome, because n2 individuals that are not recaps are not really considered. 
-test1_corrected<- chi2_markrecap(tibble(sf_df_shallowround_regions%>%filter(corrected_length >= min_size_capture_shallowround$min)))
-pet_diag_1_corrected<- chisq.test(test1_corrected)  
-
+test1_corrected_upper<- chi2_markrecap(tibble(sf_df_Upper_regions%>%filter(corrected_length >= min_size_capture_Upper$min)))
+pet_diag_1_corrected_upper<- chisq.test(test1_corrected_upper)  
+fisher.test(test1_corrected_upper)
 #seems like this passed. But I also sort of arbitrarily chose region cutoffs and there is a very small sample size. 
 
+#there are tiny sample sizes. 
 #next: Test for equal probability of capture during Event 1 (H0 = Every fish has an equal probability of being captured and marked during event 1)
 
 #also test for Test for equal probability of capture during Event 2 (H0 = Every fish has an equal probability of being captured and marked during event 2)
 
 ### TEST FOR EQUAL PROBABILITY OF CAPTURE IN EVENT 1 AND EVENT 2
-ret<- petersen_consistency(tibble(sf_df_shallowround_regions), region)
-ret$consistency_p_values
+ret_upper<- petersen_consistency(tibble(sf_df_Upper_regions), region)
+ret_upper$consistency_p_values
 
 #redo the test, filtering the dataframe for corrected lengths that do not meet the cutoff for 2023. 
 
-ret_corrected<- petersen_consistency(tibble(sf_df_shallowround_regions%>%filter(corrected_length >= min_size_capture_shallowround$min)), region)
-ret_corrected$consistency_p_values
+ret_corrected_upper<- petersen_consistency(tibble(sf_df_Upper_regions%>%filter(corrected_length >= min_size_capture_Upper$min)), region)
+ret_corrected_upper$consistency_p_values
 #the ultimate outcome of the test does not change. Cool! 
+#these all have a very small sample size
 
 
-#given that we have no stratification by length/sex necessary, and the petersen estimator is consistent, let's go ahead with a traditional population estimate. 
+##################################
+###MATT TYERS RECAPR CODE FOR CONSISTENCY STUFF
+##################################
+
+
+#total sample sizes by stratum: 
+#remember, we separated m2 and n2, so need to add for matt's code. 
+counts_by_strata_upper <- sf_df_Upper_regions %>% group_by(region) %>% 
+  summarize(n1 = sum(stat == "n1"), n2 = sum(stat == "n2")+sum(stat == "m2"), m2 = sum(stat == "m2"))
+
+matrix_upper<- petersen_matrix_tyerscode(sf_df_Upper_regions)
+matrix_upper$"NA"<-NULL
+
+consistencytest(counts_by_strata_upper$n1, counts_by_strata_upper$n2, stratamat = matrix_upper)
+
+
+#at least one passed, although there is very very low power and very small sample size. 
+
 #############################################################
 #################### POPULATION ESTIMATION 
 ##############################################################=
@@ -427,18 +453,18 @@ ret_corrected$consistency_p_values
 
 ###Below, this is ALL done without using the corrected-length dataset. This is NOT the correct final outcome, and is just a reference. 
 
-shallow_round_lake_data%>%
+Upper_lake_data%>%
   filter(!is.na(Fork_length))%>%
   summarize(
     min = min(Fork_length)
   )
 
-shallow_round_lake_data_nomorts<- shallow_round_lake_data%>%
+Upper_lake_data_nomorts<- Upper_lake_data%>%
   filter(stat == grouping)%>%
   filter(cap_label %in% c("n1", "n2", "m2"))
 
 
-shallow_round_lake_data_nomovers<- shallow_round_lake_data_nomorts%>%
+Upper_lake_data_nomovers<- Upper_lake_data_nomorts%>%
   filter(!Floy %in% c("19970", "18608"))
 
 #why are there so many less in this pop estimate than when we use a different dataset for shallowround lakes???
@@ -447,16 +473,9 @@ shallow_round_lake_data_nomovers<- shallow_round_lake_data_nomorts%>%
 #double check that the n2s are being counted correctly.
 #they are being correctly counted! 
 
-petersen_estimate<- pop_calc(petersen_funcs,  shallow_round_lake_data_nomorts)
-Chapman_estimate<- pop_calc(Chapman_funcs, shallow_round_lake_data_nomorts)
-bailey_estimate<- pop_calc(Bailey_funcs, shallow_round_lake_data_nomorts)
-
-
-#estimates if we don't include the fish that moved from lower to shallow 
-
-petersen_estimate_nomovement<- pop_calc(petersen_funcs,  shallow_round_lake_data_nomovers)
-Chapman_estimate_nomovement<- pop_calc(Chapman_funcs, shallow_round_lake_data_nomovers)
-bailey_estimate_nomovement<- pop_calc(Bailey_funcs, shallow_round_lake_data_nomovers)
+petersen_estimate_Upper<- pop_calc(petersen_funcs,  Upper_lake_data_nomorts)
+Chapman_estimate_Upper<- pop_calc(Chapman_funcs, Upper_lake_data_nomorts)
+bailey_estimate_Upper<- pop_calc(Bailey_funcs, Upper_lake_data_nomorts)
 
 
 #great.we now have the three different population estimates for shallow/round lake. 
@@ -465,23 +484,18 @@ bailey_estimate_nomovement<- pop_calc(Bailey_funcs, shallow_round_lake_data_nomo
 ####however, these pop estimates do not consider the 2023 allowable catch size. Let's now use our corrected length dataset to filter for that. 
 ####Below is the final pop estimate with the corrected length dataset. 
 #we use the truncated dataset defined above
-data_full_shallowround_truncated
+data_full_Upper_truncated
 
 #we apply the filters. 
 
-data_full_shallowround_truncated_pop<- data_full_shallowround_truncated%>%
+data_full_Upper_truncated_pop<- data_full_Upper_truncated%>%
   filter(stat == grouping)%>%
   filter(cap_label %in% c("n1", "n2", "m2"))
 
 #now we do the pop estimates. 
 
-petersen_estimate_trunc<- pop_calc(petersen_funcs,  data_full_shallowround_truncated_pop)
-Chapman_estimate_trunc<- pop_calc(Chapman_funcs, data_full_shallowround_truncated_pop)
-bailey_estimate_trunc<- pop_calc(Bailey_funcs, data_full_shallowround_truncated_pop)
+petersen_estimate_trunc_Upper<- pop_calc(petersen_funcs,  data_full_Upper_truncated_pop)
+Chapman_estimate_trunc_Upper<- pop_calc(Chapman_funcs, data_full_Upper_truncated_pop)
+bailey_estimate_trunc_Upper<- pop_calc(Bailey_funcs, data_full_Upper_truncated_pop)
 
-
-#as we can see, population estimates are significantly lower when we remove "uncatchable" n2 fish from the population. 
-
-
-
-#great! now we have a cool pipeline for everything. For the rest of the lakes, we will not do ALL these steps, we will use the simplifications where we can. 
+#these are the management-based estimates. 

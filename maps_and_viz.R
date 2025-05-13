@@ -28,7 +28,6 @@ tangle_lakes = st_transform(tangle_lakes, "WGS84")
 
 #we will take the data from our growth correction data probably. 
 
-
 geog_data<- read.csv("Total_data_corrected_lengths.csv")
 
 #need to filter this so the m2's aren't totall over-represented 
@@ -43,12 +42,13 @@ geog_data %>%
 #add NR's to make the geog data type happy
 
 #why would I need unique? Why would there be duplicates in this dataset? 
+
 geog_data$Fish_notes
 df_spatial<- geog_data%>%
   #filter(grouping %in% c("n1", "n2"))%>%
   filter(stat == grouping)%>%
   filter(cap_label %in% c("n1", "n2", "m2"))%>%
-  dplyr::select(Lake, Lat, Lon, Date, Floy, year_cap, year_recap, grouping,stat, Fish_notes, corrected_length)%>%
+  dplyr::select(Lake, Lat, Lon, Date, Floy, cap_label,year_cap, year_recap, PIT, grouping,stat, Fish_notes, corrected_length)%>%
   mutate(Year_capped = year(Date))%>%
   drop_na(Lat, Lon)
 
@@ -215,23 +215,23 @@ ggsave("upper_lake_movement.png", plot =
 
 #Lower lake
 
-lower_lake_region_1<-  st_bbox(c(xmin = crop_box_lower[[1]], xmax = crop_box_lower[[3]], ymin = 63.10, ymax = 63.13), crs = st_crs(sf_df))
-lower_lake_region_2<- st_bbox(c(xmin = crop_box_lower[[1]], xmax = crop_box_lower[[3]], ymin = 63.13, ymax = 63.135), crs = st_crs(sf_df))
-lower_lake_region_3<- st_bbox(c(xmin = crop_box_lower[[1]], xmax = crop_box_lower[[3]], ymin = 63.135, ymax =crop_box_lower[[4]]), crs = st_crs(sf_df))
+lower_lake_region_1<-  st_bbox(c(xmin = crop_box_lower[[1]], xmax = crop_box_lower[[3]], ymin = 63.10, ymax = 63.12), crs = st_crs(sf_df))
+lower_lake_region_2<- st_bbox(c(xmin = crop_box_lower[[1]], xmax = crop_box_lower[[3]], ymin = 63.12, ymax = 63.14), crs = st_crs(sf_df))
+lower_lake_region_3<- st_bbox(c(xmin = crop_box_lower[[1]], xmax = crop_box_lower[[3]], ymin = 63.14, ymax =crop_box_lower[[4]]), crs = st_crs(sf_df))
 
 #Upper lake 
 
 
-upper_lake_region_1<-  st_bbox(c(xmin = crop_box_upper[[1]], xmax = crop_box_upper[[3]], ymin = 63.015, ymax = 63.030), crs = st_crs(sf_df))
-upper_lake_region_2<- st_bbox(c(xmin = crop_box_upper[[1]], xmax = crop_box_upper[[3]], ymin = 63.030, ymax = 63.038), crs = st_crs(sf_df))
-upper_lake_region_3<- st_bbox(c(xmin = crop_box_upper[[1]], xmax = crop_box_upper[[3]], ymin = 63.038, ymax =crop_box_upper[[4]]), crs = st_crs(sf_df))
+upper_lake_region_1<-  st_bbox(c(xmin = crop_box_upper[[1]], xmax = crop_box_upper[[3]], ymin = 63.015, ymax = 63.0255), crs = st_crs(sf_df))
+upper_lake_region_2<- st_bbox(c(xmin = crop_box_upper[[1]], xmax = crop_box_upper[[3]], ymin = 63.0255, ymax = 63.035), crs = st_crs(sf_df))
+upper_lake_region_3<- st_bbox(c(xmin = crop_box_upper[[1]], xmax = crop_box_upper[[3]], ymin = 63.035, ymax =crop_box_upper[[4]]), crs = st_crs(sf_df))
 
 #Round/Shallow lake: these lakes do not appear to be mixed at all, but perhaps another test will tell us differently. 
 #split into 4 regions because this is 2 lakes? maybe. try this for now. 
 
-shallowround_lake_region_1<-  st_bbox(c(xmin = crop_box_shallowround[[1]], xmax = crop_box_shallowround[[3]], ymin = 63.05, ymax = 63.058), crs = st_crs(sf_df))
-shallowround_lake_region_2<- st_bbox(c(xmin = crop_box_shallowround[[1]], xmax = crop_box_shallowround[[3]], ymin = 63.058, ymax = 63.075), crs = st_crs(sf_df))
-shallowround_lake_region_3<- st_bbox(c(xmin = crop_box_shallowround[[1]], xmax = crop_box_shallowround[[3]], ymin = 63.075, ymax =crop_box_shallowround[[4]]), crs = st_crs(sf_df))
+shallowround_lake_region_1<-  st_bbox(c(xmin = crop_box_shallowround[[1]], xmax = crop_box_shallowround[[3]], ymin = 63.05, ymax = 63.062), crs = st_crs(sf_df))
+shallowround_lake_region_2<- st_bbox(c(xmin = crop_box_shallowround[[1]], xmax = crop_box_shallowround[[3]], ymin = 63.062, ymax = 63.072), crs = st_crs(sf_df))
+shallowround_lake_region_3<- st_bbox(c(xmin = crop_box_shallowround[[1]], xmax = crop_box_shallowround[[3]], ymin = 63.072, ymax =crop_box_shallowround[[4]]), crs = st_crs(sf_df))
 
 
 #this might return to a more original form of the dataframe, where caps and recaps are individual tuples. actually, this dataframe has that. 
