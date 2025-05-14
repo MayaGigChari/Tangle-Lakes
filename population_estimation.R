@@ -12,7 +12,7 @@ Bailey_funcs<- list(NBailey, seBailey, vBailey)
 
 
 #KS test
-
+#this must be performed with the data that has duplicates, so n2 and m2 are properly counted. 
 ks_test<- function(data, events, lakename, length_variable)
 {
   ks_results <- data.frame(

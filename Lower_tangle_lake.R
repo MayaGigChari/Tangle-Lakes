@@ -164,6 +164,7 @@ min_size_capture_Lower<- data_full_Lower%>%
     min = min(as.numeric(Fork_length))
   )
 
+
 #we keep fewer allowable fish using the full regression than just the shallow-round regression
 data_full_Lower_truncated<- data_full_Lower%>%
   filter(corrected_length>= min_size_capture_Lower$min)
@@ -429,6 +430,8 @@ Lower_length_stats_2024_plot_corrected_trunc<- plot_length_binnedWithError(Lower
 #this is not correct. this just gets all the n1s and the recaps, not the n2s. 
 #this has way fewer things than the original dataset. I don't know why. 
 #this dataset filters out the redundancy, so it should not be used for the peterson estimate. 
+
+#this spatial dataset is useful for 
 sf_df_nounk <- sf_df %>%
   filter(Floy != "UNK" | is.na(Floy))
 

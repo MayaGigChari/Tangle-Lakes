@@ -238,14 +238,38 @@ shallowround_lake_region_3<- st_bbox(c(xmin = crop_box_shallowround[[1]], xmax =
 #first, filter the geographic dataset for only the recapped floys. It is important that we have 2 tuples for each floy. 
 
 
+#plotting out the strata 
 
-#Thsi is all I need to do for geography and maps. next up is the petersen tests for complete mixing and stuff like that, which will be done in the individual lakes files. 
-
-#TODO: figure out what's going on with this "UNK" floy***
-****************************************************************
+niceplot_strata <- function(extent, strata_lat_lines_1, strata_lat_lines_2, strata_lat_lines_3) {
+  # Add lat/long to the data
+  # Base map with lake and points
+  whole_lake_plot <- ggplot() +
+    geom_sf(data = st_crop(tangle_lakes, extent), fill = "lightblue", alpha = 0.3)+
+    # Add horizontal lines for strata boundaries
+    geom_hline(yintercept = strata_lat_lines_1, linetype = "dashed", color = "blue", alpha = 1) +
+    geom_hline(yintercept = strata_lat_lines_2, linetype = "dashed", color = "orange",alpha = 1) +
+    geom_hline(yintercept = strata_lat_lines_3, linetype = "dashed", color = "purple",alpha = 1) +
+    
+    scale_color_discrete() +
+    theme_bw() +
+    labs(color = "Capture Event") +
+    theme(
+      axis.text.x = element_text(size = 5),
+      axis.text.y = element_text(size = 14),
+      legend.text = element_text(size = 12),
+      legend.title = element_text(size = 14)
+    )
   
-floys<- matched_points$Floy
+  return(whole_lake_plot)
+}
 
-sf_df_recaps<- sf_df%>%
-  filter(Floy %in% floys)%>%
-  filter(Floy != "UNK")
+
+strata_lat_lines_upper <- c( 63.017, 63.0255, 63.035, 63.046)
+
+strat_lat_lines_shallowround <- c(63.05, 63.062, 63.072, 63.081)
+
+strat_lines_lower<- c(63.10, 63.12, 63.14,63.15)
+
+# Call the function
+strata_plot<-niceplot_strata(extent = fish_extent, strata_lat_lines_1 = strata_lat_lines_upper, strata_lat_lines_2 = strat_lat_lines_shallowround, strata_lat_lines_3 = strat_lines_lower)
+ggsave("strata_plot.png", strata_plot, dpi = 300)

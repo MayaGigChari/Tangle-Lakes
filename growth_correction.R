@@ -354,27 +354,9 @@ counts<- corrected_total_data%>%
 view(corrected_total_data%>%
   filter(Floy == "UNK"))
 
-#before we save this dataframe, let's bin the lengths just in case we need to do stratification later. 
-#> 300 mm
-#> 400 mm
-#> 450
-#> 500 mm
-#> 600 mm
-#we can write code to assign a tuple to the largest bin size, so that later we can rebin. 
-breaks <- c(0, 300, 400, 450, 500, 600, Inf)  # Add 0 and Inf to cover full range
-
-# Assign numeric bin labels (bin 1 is <=300, bin 2 is <=400, ..., bin 6 is >600)
-labels <- 1:6
-
-# Apply to your dataset
-corrected_total_data_with_bins <- corrected_total_data %>%
-  mutate(length_bin_no_correction = cut(as.numeric(Fork_length), breaks = breaks, labels = labels, right = TRUE),
-         length_bin_with_correction =  cut(corrected_length, breaks = breaks, labels = labels, right = TRUE))
-
-
 
 #we will save this dataframe so we don't have to keep running this script over and over. 
-write.csv(corrected_total_data_with_bins, "Total_data_corrected_lengths.csv", row.names = FALSE)
+write.csv(corrected_total_data, "Total_data_corrected_lengths.csv", row.names = FALSE)
 
 #reading this gives us the exact format we want. Except maybe some minor discrepancy between <NA> and NA
 data<- read.csv("Total_data_corrected_lengths.csv")
