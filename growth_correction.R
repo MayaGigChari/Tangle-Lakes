@@ -3,26 +3,30 @@
 
 ###TODO: deal with the floy "UNK" category. 
 
+source('Data_Preparation_forRmd.R')
 
 library(readxl)
 library(fishmethods)
 library(recapr)
 library(tidyverse)
+library(ggplot2)
+library(emmeans)
 
 
 
+#this dataframe gives the change length and the cap length for each floy, for use in length correction analyses. 
 floys_total_change<- df_long%>%
   group_by(Floy) %>%
   arrange(length_id) %>%
   reframe(
     expand_grid(i = row_number(), j = row_number()) %>%
-      filter(i < j) %>% #avoids repetition and i = j case. 
+      filter(i < j) %>% 
       mutate(
         length_1 = length[i],
         length_2 = length[j],
         Date_cap = Date[i],
         Date_recap = Date[j],
-        change_length = length_2 - length_1
+        change_length = as.numeric(length_2) - as.numeric(length_1)
       ) %>%
       select(Date_cap, Date_recap, change_length,cap_length = length_1, recap_length = length_2, change_length)
   )
@@ -33,21 +37,21 @@ floys_total_change<- df_long%>%
 
 floys_to_shallow<-c("19970", "18608")
 
-#correct the data: pretend that the two floys above were also caught in the shallow tangle lake. 
+#correct the data: pretend that the two floys above were both caught and recaptured in the shallow lake. we can edit this later if we want to relax this assumption. 
+
 total_data_shallow_correct<- total_data
 for(i in 1: length(total_data_shallow_correct$Floy))
 {
   if(total_data_shallow_correct$Floy[i] %in% floys_to_shallow)
   {
-    print("true")
     total_data_shallow_correct$lake_combined[i] = "Shallow_Round"
     total_data_shallow_correct$Lake[i] = "Shallow"
     print(total_data_shallow_correct[i,])
   }
 }
 
-view(total_data%>%
-  filter(Floy == 18603 ))
+#view(total_data%>%
+#  filter(Floy == 18603 ))
 
 
 total_data_shallow_correct_floys<- total_data_shallow_correct%>%
@@ -67,10 +71,11 @@ floys_total_change_withLake_counts<- floys_total_change_withLake%>%
 
 capture_recapture_class <- function(df) {
   
-  # Make sure dates are Date type
+  # Make sure dates are Date type. Probably don't need this
   df$Date_cap <- as.Date(df$Date_cap)
   df$Date_recap <- as.Date(df$Date_recap)
   
+  #create a class vector
   class <- rep(NA, nrow(df))
   
   for(i in 1:nrow(df)) {
@@ -84,13 +89,14 @@ capture_recapture_class <- function(df) {
     cap_month <- as.numeric(format(cap_date, "%m"))
     recap_month <- as.numeric(format(recap_date, "%m"))
     
+    #assigns string values to the cap and recap periods 
     cap_period <- ifelse(cap_month %in% 4, paste0("April", cap_year),
                          ifelse(cap_month %in% 6, paste0("June", cap_year), NA))
     
     recap_period <- ifelse(recap_month %in% 4, paste0("April", recap_year),
                            ifelse(recap_month %in% 6, paste0("June", recap_year), NA))
     
-    # Now combine
+    # Now combine. usually there are no NA's but there might be one or two cases-- deals with any discrepancy.
     if(!is.na(cap_period) & !is.na(recap_period)) {
       class[i] <- paste0(cap_period, "_to_", recap_period)
     } else {
@@ -101,11 +107,19 @@ capture_recapture_class <- function(df) {
   return(class)
 }
               
-  
+
+#discretise the different possible events pairing each floy cap-recap incedent. 
 floys_total_change_withLake$class<- capture_recapture_class(floys_total_change_withLake)
+
+floys_total_change_withLake$cap_length<- as.numeric(floys_total_change_withLake$cap_length)
+floys_total_change_withLake$recap_length<- as.numeric(floys_total_change_withLake$recap_length)
 
 #before we run regressions, we first need to test for significant growth in all lakes and across time periods. 
 #can remove the "filter p value line" to get a full table of all the p values for growths. 
+
+#TODO: fix this, it doesn't work. 
+
+view(floys_total_change_withLake)
 growth_evidence <-floys_total_change_withLake %>%
   group_by(lake_combined, class) %>%
   summarise(
@@ -119,6 +133,7 @@ growth_evidence <-floys_total_change_withLake %>%
   drop_na()%>%
   filter(p_value< 0.05)
 
+#sanity check. 
 counts_per_lake_pair<- floys_total_change_withLake%>%
   group_by(lake_combined, class)%>%
   count()
@@ -129,12 +144,14 @@ counts_per_lake_pair<- floys_total_change_withLake%>%
 
 #first we will make some plots
 
-#plot 1: consider ALL pairs of cap_lenght, change_length values, including within-season changes
-library(ggplot2)
+#plot 1: consider ALL pairs of cap_lenght, change_length values, including within-season pairs
+
 ggplot(floys_total_change_withLake, aes(x = cap_length, y = change_length, color = lake_combined)) +
   geom_point() +
   geom_smooth(method = "lm", se = FALSE)
-#save this plot. 
+
+#TODO: save this plot. 
+
 
 #plot 2: consider only pairs of cap_length, change_length values that are significant. 
 year_data<- floys_total_change_withLake%>%
@@ -169,12 +186,8 @@ ggplot(year_data_lower, aes(x = cap_length, y = change_length, color = class)) +
 
 #we can see visually depending on how we separate the data, there are some differences in  the growth regression. 
 
-
-
 #now we want to do some statistical tests.
 
-library(emmeans)
-library(tidyverse)
 
 #first we will test to see if there is different growth just in lower lake, between sets of cap/recaps across years 
 #Ie: is capping in april 2023 and recapping in June 2024 different than June to april etc. 
@@ -198,7 +211,7 @@ anova(model_interaction_lower, model_nointeraction_lower)
 
 #here, the p value above 0.05 indicates that there is not a significant interaction between class and cap length to predict change length in lower tangle lake. 
 #this allows us to "pool" the data (class doesn't matter anymore. everything can be thought of now as "2023-2024")
-
+#This gives us more power for our length correction. 
 
 #now, let's test for the interaction of lake and cap_length, in all the pooled data. 
 model_nointeraction_lake <- lm(change_length ~ cap_length+lake_combined, data = year_data)
@@ -206,8 +219,11 @@ model_interaction_lake <- lm(change_length ~ cap_length*lake_combined, data = ye
 anova(model_nointeraction_lake, model_interaction_lake)
 
 #this is an extremely high p value, telling us that there is no interaction between lake and cap length. 
-#This allows us to further pool the data! yay! 
+#This allows us to further pool the data. Instead of considering growth in each lake separately, we can say that lake does not significantly 
+#affect the slope/intercept of the growth regression. 
 
+
+#a bit of extra analysis: 
 #We can experiment with another tool, emtrends, to compare the slopes. 
 
 emtrends(model_interaction_lower, ~ class, var = "cap_length") %>%
@@ -216,7 +232,7 @@ emtrends(model_interaction_lower, ~ class, var = "cap_length") %>%
 emtrends(model_interaction_lake, ~ lake_combined, var = "cap_length") %>%
   pairs()  
 
-#confirming: nothing is significant. further evidence that we can pool the data to create a single growth regression. 
+#confirming: nothing is significant in slope differentiation . further evidence that we can pool the data to create a single growth regression. 
 
 
 #comparing the intercepts. 
@@ -229,10 +245,7 @@ summary(emm_total)       # gives you the estimated means at x = 0
 pairs(emm_total)         # pairwise contrasts of those intercepts
 
 #great. Let's proceed with making a pooled regression we can use to correct the "n2" event data. 
-
-
 #we could probably do some kind of non-parametric bootstrap as well but for now we will accept the high p-values from these tests. 
-
 #let's build a function that can correct back to original lengths given the recap_length and the model 
 
 #recap_length-cap_length = m*cap_length + b
@@ -247,7 +260,11 @@ pairs(emm_total)         # pairwise contrasts of those intercepts
 
 #cap_length = (recap_length -b)/(1+m)
 
-###########FUNCTION DECLARATION
+##########################################
+#######Length correction for all data
+##########################################
+
+
 length_correction<- function(length, model)
 {
   slope<- coef(model)[[2]]
@@ -257,19 +274,17 @@ length_correction<- function(length, model)
 
 #get a linear model that uses all our data 
 
+model_all_data<- lm(change_length~ cap_length, data = floys_total_change_withLake)
+
+
 #in our dataset with corrected lengths, we will want to only correct N2 individuals that were recaptured. M2 individuals do not need to be corrected, because 
 #we have their length values for the N1 event. 
 #let's take a look at the total data data structure 
 
-model_all_data<- lm(change_length~ cap_length, data = floys_total_change_withLake)
-
 #remember, this dataframe has some redundancy, to allow for the m2 individuals to also be considered as n2 individuals. 
 
-#we will trust that the n2 cap_label is accurate from the lake_data_mod_plot dataframe
 
-lake_data_mod_plot$cap_label
-
-#this is the true n2! Not including the m2s? 
+#this is the true n2 Not including the m2s! 
 true_n2s<- total_data%>%
   filter(cap_label == "n2")
 
@@ -278,9 +293,13 @@ true_n2s<- total_data%>%
 
 
 #These are the true m2s that don't need to be corrected. 
+
+#TODO: check this! there might still be some redundancy here. 
+#there is redundancy but that's ok. we just want to make sure we're not correcting recap lengths. 
 true_m2s<- total_data%>%
   filter(cap_label == "m2")
 
+#view(true_m2s)
 #there is one tuple not represented here: 
 #technically 2 in the total_data dataframe because of the m2/n2 redundancy. 
 
@@ -294,6 +313,7 @@ rest<- total_data%>%
   anti_join(recap_8330)
 
 rest$cap_label
+#as we can see, these are all n1's or within events. 
 
 #need to filter floys_total_change_withLake so the cap date is the first date in 2023 captured and the recap length is the first date in 2024 captured. 
 
@@ -351,8 +371,8 @@ counts<- corrected_total_data%>%
   filter(grouping == "m2")%>%
   count()
 
-view(corrected_total_data%>%
-  filter(Floy == "UNK"))
+#view(corrected_total_data%>%
+#  filter(Floy == "UNK"))
 
 
 #we will save this dataframe so we don't have to keep running this script over and over. 

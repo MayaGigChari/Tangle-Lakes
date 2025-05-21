@@ -169,7 +169,7 @@ sample_sizes_2022<- total_data%>%
   count()
 
 #sample size criterion are satisfied for lengths for 2022 but not for 2023. 
-total_dat
+
 sample_sizes_2023<- total_data%>%
   filter(grouping == "n2")%>%
   group_by(lake_combined)%>%
@@ -676,8 +676,8 @@ floys_shallow_change<- floys_Shallow%>%
   group_by(Floy)%>%
   arrange(length_id)%>%
   summarise(
-    catpure_length = first(length)
-    recapture_length = last(length)
+    catpure_length = first(length),
+    recapture_length = last(length),
     change_length = last(length)-first(length)
   )
 

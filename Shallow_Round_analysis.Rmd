@@ -1,0 +1,36 @@
+---
+title: "Shallow-Round Tangle Lakes Analysis"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+
+#need to push these changes to github. 
+#if these packages are not installed, need to install to knit document.
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+
+#source the parent files that we wnat to work with. 
+
+source('Data_preparation_forRmd.R')
+source('maps_and_viz.R')
+
+#we don't really need to source this, but we will just in case. 
+source('growth_correction.R')
+```
+
+## First 
+
+```{r cars}
+summary(cars)
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+plot(pressure)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.

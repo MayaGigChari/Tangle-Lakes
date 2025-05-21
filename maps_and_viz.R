@@ -176,8 +176,6 @@ ggplot() +
   scale_color_discrete(name = "Capture Event") +
   theme_bw()
 
-view(raw_df)
-
 
 upper_lake_plot<- niceplot(upper_lake, crop_box_upper)+geom_sf(lines_sf)
 
@@ -236,6 +234,7 @@ shallowround_lake_region_3<- st_bbox(c(xmin = crop_box_shallowround[[1]], xmax =
 
 #this might return to a more original form of the dataframe, where caps and recaps are individual tuples. actually, this dataframe has that. 
 #first, filter the geographic dataset for only the recapped floys. It is important that we have 2 tuples for each floy. 
+#these bounding boxes are what we want to use when we source this file in the child lake RMD files. 
 
 
 #plotting out the strata 
