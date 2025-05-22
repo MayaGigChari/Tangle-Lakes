@@ -24,6 +24,7 @@ ks_test<- function(data, events, lakename, length_variable)
     stringsAsFactors = FALSE
   )
   
+  #n2 must also include m2, that is why there is replication in the dataset. 
   for (event in events) {
     # Filter data for the current event
     event_data <- data %>%
@@ -35,9 +36,9 @@ ks_test<- function(data, events, lakename, length_variable)
   }
   
   
-  print(data_n1)
-  print(data_n2)
-  print(data_m2)
+  #print(data_n1)
+  #print(data_n2)
+  #print(data_m2)
   ks_1 <- ks.test(data_n1, data_m2)
   ks_2 <- ks.test(data_n2, data_m2)
   ks_3 <- ks.test(data_n1, data_n2)
@@ -229,7 +230,7 @@ pop_calc<-function(funcs, data)
     count()
   
   #this corrects for the fact that we need to add the m2's to the n2's to get a total count of n2's. 
-  print(cap_summary_petersen)
+  #print(cap_summary_petersen)
   cap_temp<- cap_summary_petersen
   n1_temp<- cap_temp$n[2]
   n2_temp<- cap_temp$n[3]

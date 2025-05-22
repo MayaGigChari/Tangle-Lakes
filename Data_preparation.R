@@ -1,10 +1,10 @@
 #this is a script to clean up the raw dataframe. 
 
-install.packages("fishmethods")
+#install.packages("fishmethods")
 install.packages("recapr")
 
 library(readxl)
-library(fishmethods)
+#library(fishmethods)
 library(recapr)
 library(dplyr)
 library(tidyr)

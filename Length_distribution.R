@@ -119,7 +119,7 @@ assign_bins<- function(data)
 binned_length_statistics <- function(binned_data, yearSort = FALSE, year = NULL, geartype = FALSE)
 {
   bin_levels <- unique(binned_data$bin)
-  print(bin_levels)
+  #print(bin_levels)
   
   if (yearSort ) 
   {

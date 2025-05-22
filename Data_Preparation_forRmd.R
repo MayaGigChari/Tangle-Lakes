@@ -1,11 +1,14 @@
 #this is a script to clean up the raw dataframe. 
 
-install.packages("fishmethods")
-install.packages("recapr")
-install.packages("lubridate")
+#only need to run these install statements if the system does not already have the packages installed. 
+#install.packages("fishmethods")
+#install.packages("recapr", repos = "https://cloud.r-project.org")
+#install.packages("lubridate", repos = "https://cloud.r-project.org")
+#install.packages("plotly", repos = "https://cloud.r-project.org")
 
+library(plotly)
 library(readxl)
-library(fishmethods)
+#library(fishmethods)
 library(recapr)
 library(dplyr)
 library(tidyr)
@@ -225,8 +228,7 @@ recapped_fish_no_within_event<- recapped_fish_floy_lengths%>%
 
 #now I want to write a function that plots the changes in length across all these fish 
 
-#plotting_recaps
-library(tidyr) 
+#create a long dataframe that has all paired events for length-change analysis. 
 plotting_recaps<- recapped_fish_no_within_event%>%
   select(Floy, Date_marked, Date_recapped_1, Date_recapped_2, Date_recapped_3, Date_recapped_4, Length_1, Length_2, Length_3, Length_4, Length_5)
 
@@ -247,21 +249,6 @@ df_long <-  plotting_recaps %>%
   filter(length_id == Date_id)%>%
   arrange(Floy)# Only keep rows where length_id matches Date_id
 
-install.packages("plotly")
-library(plotly)
-plotly::ggplotly(
-  ggplot(df_long, aes(x = Date, y = length, group = Floy, color = factor(Floy))) +
-    geom_point()+
-    geom_line() +
-    labs(title = "Fish Length vs Recapture Date", x = "Date", y = "Length (cm)") +
-    theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
-    scale_color_discrete(name = "Fish ID") +
-    theme_bw()+
-    theme(legend.position = "none")
-) 
-ggsave("fish_growth_plot.png", 
-       height = 12,  # Adjust the height (in inches)
-       width = 6,    # Adjust the width (in inches)
-       dpi = 300)
 
+#plot and visualize growht in growth correction file. 
 

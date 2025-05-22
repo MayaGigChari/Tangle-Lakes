@@ -12,6 +12,23 @@ library(tidyverse)
 library(ggplot2)
 library(emmeans)
 
+#First, given the dataframe compiled in Data_preparation_forRmd, let's make a plot of the growth just to visualize
+#we will save this plot. 
+
+plotly::ggplotly(
+  ggplot(df_long, aes(x = Date, y = length, group = Floy, color = factor(Floy))) +
+    geom_point()+
+    geom_line() +
+    labs(title = "Fish Length vs Recapture Date", x = "Date", y = "Length (cm)") +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+    scale_color_discrete(name = "Fish ID") +
+    theme_bw()+
+    theme(legend.position = "none")
+) 
+ggsave("fish_growth_plot.png", 
+       height = 12,  
+       width = 6,    
+       dpi = 300)
 
 
 #this dataframe gives the change length and the cap length for each floy, for use in length correction analyses. 
@@ -119,7 +136,7 @@ floys_total_change_withLake$recap_length<- as.numeric(floys_total_change_withLak
 
 #TODO: fix this, it doesn't work. 
 
-view(floys_total_change_withLake)
+#view(floys_total_change_withLake)
 growth_evidence <-floys_total_change_withLake %>%
   group_by(lake_combined, class) %>%
   summarise(
@@ -148,8 +165,10 @@ counts_per_lake_pair<- floys_total_change_withLake%>%
 
 ggplot(floys_total_change_withLake, aes(x = cap_length, y = change_length, color = lake_combined)) +
   geom_point() +
-  geom_smooth(method = "lm", se = FALSE)
-
+  geom_smooth(method = "lm", se = FALSE)+
+  labs(title = "Growth Regression all lakes + all dates") +
+  theme_bw()
+ggsave("Growth_Regression_All_Data_lake_specific.png", dpi = 300)
 #TODO: save this plot. 
 
 
@@ -159,7 +178,11 @@ year_data<- floys_total_change_withLake%>%
 
 ggplot(year_data, aes(x = cap_length, y = change_length, color = lake_combined)) +
   geom_point() +
-  geom_smooth(method = "lm", se = FALSE)
+  geom_smooth(method = "lm", se = FALSE)+
+  labs(title = "Growth Regression all lakes only significant growth periods") +
+  theme_bw()
+ggsave("Significant_Growth_Regressions_all_lakes.png", dpi = 300)
+
 #save this plot. 
 
 
@@ -169,8 +192,12 @@ jun_jun_data<- floys_total_change_withLake%>%
 
 ggplot(jun_jun_data, aes(x = cap_length, y = change_length, color = lake_combined)) +
   geom_point() +
-  geom_smooth(method = "lm", se = FALSE)
-#save this plot
+  geom_smooth(method = "lm", se = FALSE)+
+  labs(title = "Growth Regression only June to June datapoints") +
+  theme_bw()
+
+ggsave("Significant_Growth_Regressions_June-June_data_only.png", 
+       dpi = 300)
 
 
 #plot 4: this is just for lower tangle lake, separated by mark/recap "classes"
@@ -182,7 +209,12 @@ ggplot(year_data_lower, aes(x = cap_length, y = change_length, color = class)) +
   geom_point() +
   geom_smooth(method = "lm", se = FALSE)+
   labs(title = "lower lake growth between different mark/recap periods"
-  )
+  )+
+  theme_bw()
+
+ggsave("Lower_Lake_growth_over_different_mark_recap_periods.png", 
+       dpi = 300)
+
 
 #we can see visually depending on how we separate the data, there are some differences in  the growth regression. 
 

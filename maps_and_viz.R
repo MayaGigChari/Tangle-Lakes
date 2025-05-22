@@ -3,7 +3,7 @@
 
 #lake maps and visualizations
 
-install.packages("sf")
+#install.packages("sf", repos = "https://cloud.r-project.org")
 library(readxl)
 library(sf)
 library(dplyr)
@@ -12,9 +12,12 @@ library(plotly)
 library(tidyverse)
 
 
-
+#need to have the geometries in the correct folder for this to work 
 tangle_lakes<-read_sf("GIS/Tanana_lakes.shp")
 tangle_streams<- read_sf("GIS/Tanana_streams.shp")
+
+
+#do a quick plot 
 plot(tangle_lakes$geometry)
 plot(tangle_streams[1])
 #streams aren't that useful. 
@@ -26,24 +29,18 @@ tangle_lakes = st_transform(tangle_lakes, "WGS84")
 
 #can crop the image to the spatial extent of the data once we have the data. 
 
-#we will take the data from our growth correction data probably. 
+#read in the data generated from the growth_correction file. could really use any raw-ish form of the data, though! 
+
 
 geog_data<- read.csv("Total_data_corrected_lengths.csv")
-
-#need to filter this so the m2's aren't totall over-represented 
-
-#for some reason, we are getting THREE copies of every recap. 
-#this is because we have one extra copy of the recap event for labeling purposes. either can be picked for this. 
-geog_data %>%
-  filter(Floy == 18603 )
 
 
 #just the fish that are properly tagged? 
 #add NR's to make the geog data type happy
 
-#why would I need unique? Why would there be duplicates in this dataset? 
 
-geog_data$Fish_notes
+#create a spatial dataset and make sure that we do NOT preserve the duplicate n2/m2s. This is not useful for spatial analysis. 
+
 df_spatial<- geog_data%>%
   #filter(grouping %in% c("n1", "n2"))%>%
   filter(stat == grouping)%>%
@@ -53,7 +50,7 @@ df_spatial<- geog_data%>%
   drop_na(Lat, Lon)
 
 
-#2 fish didn't have lat or long data or a date. 
+#convert the spatial dataset to an sf object
 
 sf_df<- st_as_sf(df_spatial,coords = c("Lon", "Lat"), crs= "WGS84")
 
@@ -110,7 +107,7 @@ all_lakes<- niceplot(sf_df, fish_extent)
 interactive_plot_alllakes <- ggplotly(all_lakes, tooltip = "text")
 #now when we hover over points we can see what the exact lat lon is. 
 
-ggsave("whole_system_mark_recap_2022_2023.png", plot = whole_lake_plot, dpi = 300, width = 10, height = 15)  # Adjust width and height
+ggsave("whole_system_mark_recap_2022_2023.png", plot = all_lakes, dpi = 300, width = 10, height = 15)  # Adjust width and height
 
 #now I want to separate into multiple lake files. 
 
@@ -174,12 +171,14 @@ ggplot() +
   geom_sf(data = st_crop(tangle_lakes, fish_extent)) +
   geom_sf(data = lines_sf, color = "black", size = 1, alpha = 0.6) +
   scale_color_discrete(name = "Capture Event") +
+  labs(title = "Recapped Fish Movement")+
   theme_bw()
 
+ggsave("Recapped_fish_movement.png", dpi =300)
 
-upper_lake_plot<- niceplot(upper_lake, crop_box_upper)+geom_sf(lines_sf)
 
-lines_plot<- function(lines_data, crop_box, original_geom)
+
+lines_plot<- function(lines_data, crop_box, original_geom, lake)
 {
   # ggplot so that we can hover. 
   whole_lake_plot <- ggplot() +
@@ -191,18 +190,19 @@ lines_plot<- function(lines_data, crop_box, original_geom)
       axis.text.y = element_text(size = 14),
       legend.text = element_text(size = 12),
       legend.title = element_text(size = 14)
-    )
+    )+
+    labs(title = paste(lake, " Movement plot"))
   return(whole_lake_plot)
 }
-lower_lakes_movement<-lines_plot(lines_sf, crop_box_lower, tangle_lakes)
+lower_lakes_movement<-lines_plot(lines_sf, crop_box_lower, tangle_lakes, "Lower")
 ggsave("lower_lake_movement.png", plot = lower_lakes_movement,
        width = 10, height = 5, units = "in", dpi = 300)
 
-shallow_round_movement<- lines_plot(lines_sf, crop_box_shallowround, tangle_lakes)
+shallow_round_movement<- lines_plot(lines_sf, crop_box_shallowround, tangle_lakes, "Shallow-Round")
 ggsave("shallowround_lake_movement.png", plot = shallow_round_movement,
        width = 10, height = 5, units = "in", dpi = 300)
 
-upper_movement<- lines_plot(lines_sf, crop_box_upper, tangle_lakes)
+upper_movement<- lines_plot(lines_sf, crop_box_upper, tangle_lakes, "Upper")
 ggsave("upper_lake_movement.png", plot = 
          upper_movement,
        width = 10, height = 5, units = "in", dpi = 300)
