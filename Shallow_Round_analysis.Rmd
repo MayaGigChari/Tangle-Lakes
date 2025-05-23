@@ -4,6 +4,11 @@ output: html_document
 ---
 
 ```{r setup, include=FALSE}
+
+install.packages("recapr", repos = "https://cloud.r-project.org")
+install.packages("sf", repos = "https://cloud.r-project.org")
+install.packages("fishmethods", repos = "https://cloud.r-project.org")
+
 library(knitr)
 knitr::opts_chunk$set(echo = TRUE)
 knitr::opts_chunk$set(warning = FALSE, message = FALSE)
@@ -737,7 +742,7 @@ Lower_length_stats_2024_plot_corrected_trunc
 
 ## 2.2 Estimating Population Size
 
-#### 1.2.1 Consistency Tests for the Peterson Estimator
+#### 2.2.1 Consistency Tests for the Peterson Estimator
 
 ```{r, echo = FALSE}
 #this spatial dataset is useful for 
@@ -822,3 +827,370 @@ petersen_estimate_trunc_Lower_nomove
 ```
 
 The population estimate is lower when the two fish that moved are not included because they were n1 in lower and n2 in shallow/round, meaning they were recapped in shallowround. becayse pop = n1n2/m2, decreasing n1 by leaving these fish out decreases the value of the numerator. 
+
+## 3.0.0 Finally we will look at Upper tangle lakes (Part 3)
+
+Note: the Upper tangle lakes analysis has very little data and therefore does not meet the precision requirements outlined in the operational plan. 
+
+### 3.1 Evaluating Growth and Length Composition Analysis 
+
+#### 3.1.1 Visualization of ECDF with and Without Length-correction for 2024 (N2) Fish
+
+```{r, echo = FALSE}
+Upper_lake_data<- total_data%>%
+  filter(lake_combined == "Upper")
+
+Upper_lake_data_floys<-Upper_lake_data%>%
+  select(Floy)%>%
+  filter(!is.na(Floy))
+
+floys_upper<-df_long%>%
+  filter(Floy %in% Upper_lake_data_floys$Floy)
+
+
+plotly::ggplotly(
+  ggplot(floys_upper, aes(x = Date, y = length, group = Floy, color = factor(Floy))) +
+    geom_point()+
+    geom_line() +
+    labs(title = "Fish Length over time Shallow Lake", x = "Date", y = "Length (cm)") +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+    scale_color_discrete(name = "Fish ID") +
+    theme_bw()+
+    theme(legend.position = "none")
+) 
+
+ggsave("fish_growth_upper.png", 
+       height = 12,  # Adjust the height (in inches)
+       width = 6,    # Adjust the width (in inches)
+       dpi = 300)
+
+
+
+min_size_capture_Upper<- Upper_lake_data%>%
+  filter(Date < "2024-01-01")%>%
+  filter(!is.na(Fork_length))%>%
+  summarize(
+    min = min(as.numeric(Fork_length))
+  )
+
+
+data_full_Upper<- data_full %>%
+  filter(lake_combined == "Upper")%>%
+  filter(cap_label %in% events_list)
+
+#first let's look at the ecdf without truncating the distribution. 
+ecdf_plot_withcorrection_Upper_full_regression<-ggplot(data_full_Upper, aes(x = as.numeric(Fork_length), color = grouping)) +
+  stat_ecdf(geom = "step") +  # ECDF with step lines
+  labs(x = "length", y = "CDF", color = "Group", title = "m2-length corrected ECDF Upper using full regression, no min-truncation") +
+  theme_minimal()
+
+print("first let's look at the ecdf without truncating the distribution or correcting for length-changes") 
+
+ecdf_plot_withcorrection_Upper_full_regression
+
+
+ggsave("ecdf_plot_withcorrection_Upper_full_regression.png", ecdf_plot_withcorrection_shallowround_full_regression, dpi = 300)
+
+#Now let's truncate to the minimum captured size in event 1, which as we said above is min_size_capture_shallowround
+
+
+#we keep fewer allowable fish using the full regression than just the shallow-round regression
+data_full_Upper_truncated<- data_full_Upper%>%
+  filter(corrected_length>= min_size_capture_Upper$min)
+
+
+
+ecdf_plot_withcorrection_Upper_full_regression_truncated<-ggplot(data_full_Upper_truncated, aes(x = as.numeric(corrected_length), color = grouping)) +
+  stat_ecdf(geom = "step") +  # ECDF with step lines
+  labs(x = "length", y = "CDF", color = "Group", title = "m2-length corrected ECDF Shallow-Round using full regression, with min-truncation") +
+  theme_minimal()
+
+print("Now let's truncate to the minimum captured size in event 1, and with corrected lengths for n2")
+
+ecdf_plot_withcorrection_Upper_full_regression_truncated
+
+ggsave("ecdf_plot_withcorrection_Upper_full_regression_truncated.png", ecdf_plot_withcorrection_Upper_full_regression_truncated, dpi = 300)
+
+
+
+```
+As we can see, there are not many datapoints in the upper tangle lakes, but correcting for length does not really change the length distribution, likely because upper tangle lakes already has many big fish. 
+
+#### 3.1.2 K-S tests with and without length-correction
+
+```{r, echo = FALSE}
+Upper_ks_nocorrection<- ks_test(data_full_Upper, events_list, "Upper", length_variable = "Fork_length" )
+
+Upper_ks_withcorrection<- ks_test(data_full_Upper_truncated, events_list, "Upper", length_variable = "corrected_length")
+
+print("KS-test results without length correction:")
+Upper_ks_nocorrection
+
+print("KS test results with length correction: ")
+Upper_ks_withcorrection
+```
+We do not see any evidence for stratification, but we must take this with a grain of salt because we have very small sample sizes and low power. 
+
+#### 3.1.3 Length Composition Analysis Without growth correction 
+
+
+```{r, echo = FALSE}
+
+#when making these distributions, we want to make sure that we are only considering n1 and n2, and not using the m2 data twice. 
+
+data_full_Upper_n1n2<- data_full_Upper%>%
+  filter(grouping %in% c("n1", "n2"))
+
+data_full_Upper_n1n2 <- data_full_Upper_n1n2 %>%
+  mutate(Year_capped = year(Date))
+
+
+#now we can run some of the functions from the Length_distribution file. 
+
+
+#just visualizing the continuous distribution first 
+
+Upper_continuous_viz<- plot_length_dist_continuous(data_full_Upper_n1n2, lakeSystem = "Upper")
+
+
+print("Let's visualize the non-binned continuous length distribution in a few ways")
+
+Upper_continuous_viz$full_distribution
+Upper_continuous_viz$full_distribution_bothyears
+Upper_continuous_viz$full_distribution_years_sep
+
+#bin the lengths
+
+data_full_Upper_n1n2<- data_full_Upper_n1n2%>%
+  drop_na(Fork_length)%>%
+  filter(Fork_length!= "?")
+
+data_full_Upper_n1n2_binned<- assign_bins(data_full_Upper_n1n2)
+
+#do an analysis for both years, 2023 and 2024
+
+Upper_length_stats_bothyears<- binned_length_statistics(data_full_Upper_n1n2_binned)
+
+
+print("Now we have binned the Upper lake data, let's take a look at the stats for both years")
+knitr::kable(Upper_length_stats_bothyears, caption = "Binned Length Stats Upper 2023 + 2024")
+
+#the preservation needs to happen here. 
+Upper_length_stats_2023<- binned_length_statistics(data_full_Upper_n1n2_binned, yearSort = TRUE, year = 2023)
+
+print("Let's look at just 2023 for Upper lake")
+knitr::kable(Upper_length_stats_2023, caption = "Binned Length Stats Upper 2023")
+
+Upper_length_stats_2024<- binned_length_statistics(data_full_Upper_n1n2_binned, yearSort = TRUE, year = 2024)
+
+print("Let's look at just 2024 for Upper lake")
+knitr::kable(Upper_length_stats_2024, caption = "Binned Length Stats Upper 2024")
+
+#make some plots for both years, 2023 and 2024
+
+Upper_length_stats_bothyears_plot<- plot_length_binnedWithError(Upper_length_stats_bothyears)
+
+
+Upper_length_stats_2023_plot<- plot_length_binnedWithError(Upper_length_stats_2023)
+
+Upper_length_stats_2024_plot<- plot_length_binnedWithError(Upper_length_stats_2024)
+
+print("Binned Length Distribution for 2023/2024 combined ")
+Upper_length_stats_bothyears_plot
+
+print("Binned Length Distribution for 2023 only ")
+Upper_length_stats_2023_plot
+
+print("Binned Length Distribution for 2024 only ")
+Upper_length_stats_2024_plot
+
+
+```
+
+#### 3.1.4 Length-By-Weight Analysis
+
+```{r}
+
+#fit the LBV length-by weight relationship allometric model. 
+
+#aL^b is the model, we estimate parameters for a and b. 
+
+#this is the allometric weight-length model 
+
+#one poorly recorded weight of zero is fixed with this line. 
+wl.lin_Upper <- lm_lw(data_full_Upper_n1n2%>%drop_na(Fork_length)%>%filter(Weight >0))
+
+
+summary(wl.lin_Upper)
+
+# Remember, as a linear model the intercept is equal to ln(alpha) and the slope coefficient is equal to the beta parameter
+
+#coef(wl.lin_Upper)
+
+# Finally lets save our parameter estimates
+# Remember if we want the mean-unbiased estimate of the alpha parameter we need
+#   to account for the lognormal correction when re-transforming
+
+wl.lin.sigma_Upper <- sigma(wl.lin_Upper) 
+print("sigma: ")
+wl.lin.sigma_Upper
+# There is an analytical solution for the error standard deviation 
+
+# ln(alpha)
+wl.lin.ln_alpha_Upper <- as.numeric(coef(wl.lin_Upper)[1])
+
+# alpha (mean-unbiased)# this is from the fish 622 course. 
+wl.lin.alpha_Upper <-exp(wl.lin.ln_alpha_Upper)*exp((wl.lin.sigma_Upper^2)/2)
+print("alpha:")
+wl.lin.alpha_Upper
+
+# Beta
+wl.lin.beta_Upper <- as.numeric(coef(wl.lin_Upper)[2])
+print("beta: ")
+wl.lin.beta_Upper
+
+print("Lets plot the model fit")
+plot_wl(data=data_full_Upper_n1n2, alpha=wl.lin.alpha_Upper, beta=wl.lin.beta_Upper)
+
+```
+
+Here, the beta value is very close to shallow-round tangle lakes and a bit strewed from lower tangle lakes. 
+
+#### 3.1.5 What if we used the length-corrected data? Length composition analysis with length-corrected data for Upper tangle lake
+
+```{r, echo = FALSE}
+
+
+
+data_full_Upper_trunc_copy<- data_full_Upper_truncated
+
+#do the assignment 
+data_full_Upper_trunc_copy$Fork_length<-data_full_Upper_trunc_copy$corrected_length
+
+#now we can proceed with the same analyses as above. 
+
+#first we will do some data wrangling and visualization 
+
+data_full_Upper_n1n2_corrected_trunc<- data_full_Upper_trunc_copy%>%
+  filter(grouping %in% c("n1", "n2"))
+
+data_full_Upper_n1n2_corrected_trunc<- data_full_Upper_n1n2_corrected_trunc %>%
+  mutate(Year_capped = year(Date))
+
+Upper_continuous_viz_trunc<- plot_length_dist_continuous(data_full_Upper_n1n2_corrected_trunc, lakeSystem = "Upper")
+
+#it only makes sense to look at both years now because the 2024 data has been corrected, so no longer really represents 2024.
+
+#if we look at both years overlayed, we can see that with the correction the 2024 histogram has a maximum density at a much Upper fork length. 
+
+print("Let's visualize the non-binned, length corrected continuous length distribution in a few ways")
+
+Upper_continuous_viz_trunc$full_distribution_bothyears
+
+Upper_continuous_viz_trunc$full_distribution
+
+Upper_continuous_viz_trunc$full_distribution_years_sep
+
+#bin the lengths
+data_full_Upper_n1n2_trunc_binned<- assign_bins(data_full_Upper_n1n2_corrected_trunc)
+
+
+Upper_length_stats_bothyears_trunc<- binned_length_statistics(data_full_Upper_n1n2_trunc_binned)
+
+Upper_length_stats_2023_corrected_trunc<- binned_length_statistics(data_full_Upper_n1n2_trunc_binned, yearSort = TRUE, year = 2023)
+
+Upper_length_stats_2024_corrected_trunc<- binned_length_statistics(data_full_Upper_n1n2_trunc_binned, yearSort = TRUE, year = 2024)
+
+
+#make some plots for both years, 2023 and 2024
+
+Upper_length_stats_bothyears_plot_corrected_trunc<- plot_length_binnedWithError(Upper_length_stats_bothyears_trunc)
+
+Upper_length_stats_2023_plot_corrected_trunc<- plot_length_binnedWithError(Upper_length_stats_2023_corrected_trunc)
+
+Upper_length_stats_2024_plot_corrected_trunc<- plot_length_binnedWithError(Upper_length_stats_2024_corrected_trunc)
+
+
+print("Binned CORRECTED Length Distribution for 2023/2024 combined ")
+Upper_length_stats_bothyears_plot_corrected_trunc
+
+print("Binned CORRECTED Length Distribution for 2023 only ")
+Upper_length_stats_2023_plot_corrected_trunc
+
+print("Binned CORRECTED Length Distribution for 2024 only ")
+Upper_length_stats_2024_plot_corrected_trunc
+
+
+```
+Because the sample size estimates are not met for both 2023 and 2024 for precision criterion, it may make sense to use corrected lengths and only estimate for 2023 catch. 
+
+## 3.2 Estimating Population Size
+
+#### 3.2.1 Consistency Tests for the Peterson Estimator
+
+```{r, echo = FALSE}
+#this spatial dataset is useful for 
+sf_df_nounk <- sf_df %>%
+  filter(Floy != "UNK" | is.na(Floy))
+
+
+
+
+#need to go by stats now. 
+sf_df_Upper_r1<- st_crop(sf_df_nounk, upper_lake_region_1)
+sf_df_Upper_r1$region<-1
+sf_df_Upper_r2<- st_crop(sf_df_nounk, upper_lake_region_2)
+sf_df_Upper_r2$region<-2
+sf_df_Upper_r3<- st_crop(sf_df_nounk, upper_lake_region_3)
+sf_df_Upper_r3$region<-3
+
+sf_df_Upper_regions<- sf_df_Upper_r1%>%
+  rbind(sf_df_Upper_r2)%>%
+  rbind(sf_df_Upper_r3)
+
+### TEST FOR EQUAL PROBABILITY OF CAPTURE IN EVENT 1 AND EVENT 2 and chi2 mark recap test. 
+
+
+##################################
+###MATT TYERS RECAPR CODE FOR CONSISTENCY STUFF
+##################################
+
+
+#total sample sizes by stratum: 
+#remember, we separated m2 and n2, so need to add for matt's code. 
+
+sf_df_Upper_regions_nosmall<- sf_df_Upper_regions%>%filter(corrected_length >= min_size_capture_Upper$min)
+counts_by_strata_Upper <- sf_df_Upper_regions_nosmall %>% group_by(region) %>% 
+  summarize(n1 = sum(stat == "n1"), n2 = sum(stat == "n2")+sum(stat == "m2"), m2 = sum(stat == "m2"))
+
+matrix_Upper<- petersen_matrix_tyerscode(sf_df_Upper_regions)
+matrix_Upper$"NA"<-NULL
+
+consistencytest(counts_by_strata_Upper$n1, counts_by_strata_Upper$n2, stratamat = matrix_Upper)
+
+```
+There are again very small sample sizes, but we can continue with the Petersen estimate as two consistency tests were passed
+
+```{r, echo = FALSE}
+
+#we apply the filters. 
+
+data_full_Upper_truncated_pop<- data_full_Upper_truncated%>%
+  filter(stat == grouping)%>%
+  filter(cap_label %in% c("n1", "n2", "m2"))
+
+
+
+#now we do the pop estimates. First with the two floys included. 
+
+petersen_estimate_trunc_Upper<- pop_calc(petersen_funcs,  data_full_Upper_truncated_pop)
+Chapman_estimate_trunc_Upper<- pop_calc(Chapman_funcs, data_full_Upper_truncated_pop)
+bailey_estimate_trunc_Upper<- pop_calc(Bailey_funcs, data_full_Upper_truncated_pop)
+
+
+print("petersen estimate: ")
+petersen_estimate_trunc_Upper
+
+```
+As we can see we have a very small population estimate for upper tangle lake, with very low power. 
+
