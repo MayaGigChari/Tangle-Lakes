@@ -435,8 +435,12 @@ We will do a population estimation. We use the truncated dataset to correct for 
 
 ####Below is the final pop estimate with the corrected length dataset. We use the truncated dataset to correct for 2024 fish that were possible to catch in 2023. 
 
+#there are a few ways we can deal with the fish that moved
 
-
+#1. we consider the two fish that moved lakes as both capped and recapped in shallow-round
+#2. We consider the two fish that moved as both capped and recpaped in lower
+#3. we consider the two fish that moved as capped in lower and recapped in shallow-round and explore some darroch-type estimator. 
+#4. we remove the fish that moved from the sample. 
 
 
 #we apply the filters. 
@@ -446,18 +450,43 @@ data_full_shallowround_truncated_pop<- data_full_shallowround_truncated%>%
   filter(cap_label %in% c("n1", "n2", "m2"))
 
 
+#deal with the fish that moved
+
+movers<- data_full_shallowround_truncated_pop%>%
+  filter(Floy %in% c("19970", "18608"))
+
+
+#this is a hacky way, but need to add all these to n1 so they are properly counted.
+#other fields don't matter. 
+movers_cap <- movers
+movers_cap$cap_label<- "n1"
+movers_cap$stat<- "n1"
+movers_cap$grouping<- "n1"
+
+movers<- rbind(movers, movers_cap)
+
+#1: remove the fish that moved. 
 shallow_round_lake_data_nomovers<- data_full_shallowround_truncated_pop%>%
   filter(!Floy %in% c("19970", "18608"))
 
+#2: add the fish that moved
+
+shallow_round_lake_data_withmovers<- rbind(shallow_round_lake_data_nomovers, movers)
+
+
+
+
 #now we do the pop estimates. 
 
-petersen_estimate_trunc<- pop_calc(petersen_funcs,  data_full_shallowround_truncated_pop)
-Chapman_estimate_trunc<- pop_calc(Chapman_funcs, data_full_shallowround_truncated_pop)
-bailey_estimate_trunc<- pop_calc(Bailey_funcs, data_full_shallowround_truncated_pop)
+petersen_estimate_trunc<- pop_calc(petersen_funcs,  shallow_round_lake_data_withmovers)
+Chapman_estimate_trunc<- pop_calc(Chapman_funcs, shallow_round_lake_data_withmovers)
+bailey_estimate_trunc<- pop_calc(Bailey_funcs, shallow_round_lake_data_withmovers)
 
 
 print("Petersen estimate for population size of Shallow-round lake with the 2 fish that moved")
 petersen_estimate_trunc
+
+
 petersen_estimate_nomovement<- pop_calc(petersen_funcs,  shallow_round_lake_data_nomovers)
 Chapman_estimate_nomovement<- pop_calc(Chapman_funcs, shallow_round_lake_data_nomovers)
 bailey_estimate_nomovement<- pop_calc(Bailey_funcs, shallow_round_lake_data_nomovers)
@@ -487,6 +516,8 @@ Below I will use the corrected lengths for N2 using the pooled regressions.
 #### 2.1.1 Visualization of ECDF with and Without Length-correction for 2024 (N2) Fish
 
 ```{r, echo = FALSE}
+
+
 data_full_Lower<- data_full %>%
   filter(lake_combined == "Lower")%>%
   filter(cap_label %in% events_list)
@@ -804,14 +835,42 @@ data_full_Lower_truncated_pop<- data_full_Lower_truncated%>%
   filter(cap_label %in% c("n1", "n2", "m2"))
 
 
+
+#data without considering the two floys that moved 
 Lower_lake_data_nomovers<- data_full_Lower_truncated_pop%>%
   filter(!Floy %in% c("19970", "18608"))
 
+
+movers<- data_full_Lower_truncated_pop%>%
+  filter(Floy %in% c("19970", "18608"))
+
+
+#data with considering the two floys that moved as having stayed in lower. 
+
+#this is a hacky way, but need to add all these to n1 so they are properly counted.
+#other fields don't matter. 
+movers_cap <- movers
+movers_cap$cap_label<- "m2"
+movers_cap$stat<- "m2"
+movers_cap$grouping<- "m2"
+
+movers<- rbind(movers, movers_cap)
+
+#1: remove the fish that moved. 
+Lower_lake_data_nomovers<- data_full_Lower_truncated_pop%>%
+  filter(!Floy %in% c("19970", "18608"))
+
+#2: add the fish that moved
+
+Lower_lake_data_withmovers<- rbind(Lower_lake_data_nomovers, movers)
+
+
+
 #now we do the pop estimates. First with the two floys included. 
 
-petersen_estimate_trunc_Lower<- pop_calc(petersen_funcs,  data_full_Lower_truncated_pop)
-Chapman_estimate_trunc_Lower<- pop_calc(Chapman_funcs, data_full_Lower_truncated_pop)
-bailey_estimate_trunc_Lower<- pop_calc(Bailey_funcs, data_full_Lower_truncated_pop)
+petersen_estimate_trunc_Lower<- pop_calc(petersen_funcs,  Lower_lake_data_withmovers)
+Chapman_estimate_trunc_Lower<- pop_calc(Chapman_funcs, Lower_lake_data_withmovers)
+bailey_estimate_trunc_Lower<- pop_calc(Bailey_funcs, Lower_lake_data_withmovers)
 
 #Now we will do this with the two floys that moved not included. 
 
@@ -1171,6 +1230,8 @@ consistencytest(counts_by_strata_Upper$n1, counts_by_strata_Upper$n2, stratamat 
 ```
 There are again very small sample sizes, but we can continue with the Petersen estimate as two consistency tests were passed
 
+
+#### 3.2.2 Petersen estimation of population size
 ```{r, echo = FALSE}
 
 #we apply the filters. 
